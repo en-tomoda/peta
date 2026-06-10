@@ -68,7 +68,8 @@ func main() {
 
 	application := &app{db: db}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", application.handleIndex)
+	mux.Handle("/web/", http.StripPrefix("/web/", http.FileServer(http.Dir("web"))))
+	mux.HandleFunc("/", application.handleIndex)
 	mux.HandleFunc("POST /upload", application.handleUpload)
 	mux.HandleFunc("GET /history", application.handleHistory)
 	mux.HandleFunc("GET /share/{id}", application.handleShare)
@@ -109,6 +110,10 @@ CREATE TABLE IF NOT EXISTS pages (
 }
 
 func (a *app) handleIndex(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	http.ServeFile(w, r, "web/index.html")
 }
 

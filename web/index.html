@@ -4,162 +4,99 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Peta - HTML Upload</title>
-    <style>
-      :root {
-        color-scheme: light;
-      }
-      body {
-        margin: 0;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #f7f7fa;
-        color: #1a1a1a;
-      }
-      main {
-        max-width: 860px;
-        margin: 40px auto;
-        padding: 0 16px;
-      }
-      h1 {
-        margin-bottom: 8px;
-      }
-      p {
-        color: #666;
-      }
-      .upload-mode {
-        margin-top: 16px;
-        display: grid;
-        gap: 8px;
-      }
-      input[type="file"] {
-        width: 100%;
-        padding: 10px;
-        border: 1px solid #d0d0d0;
-        border-radius: 10px;
-        box-sizing: border-box;
-        background: #fff;
-      }
-      textarea {
-        width: 100%;
-        min-height: 320px;
-        margin-top: 16px;
-        border: 1px solid #d0d0d0;
-        border-radius: 10px;
-        padding: 12px;
-        font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-          "Liberation Mono", "Courier New", monospace;
-        box-sizing: border-box;
-        background: #fff;
-      }
-      .actions {
-        display: flex;
-        gap: 12px;
-        align-items: center;
-        margin-top: 12px;
-      }
-      button {
-        border: 0;
-        border-radius: 8px;
-        background: #2b6ef3;
-        color: #fff;
-        padding: 10px 16px;
-        font-weight: 600;
-        cursor: pointer;
-      }
-      button:disabled {
-        opacity: 0.5;
-        cursor: not-allowed;
-      }
-      #result {
-        margin-top: 16px;
-        padding: 12px;
-        border-radius: 8px;
-        background: #eef4ff;
-        display: none;
-      }
-      #error {
-        margin-top: 12px;
-        color: #c80000;
-        min-height: 20px;
-      }
-      .history {
-        margin-top: 24px;
-        background: #fff;
-        border: 1px solid #e3e5ef;
-        border-radius: 10px;
-        padding: 12px;
-      }
-      .history h2 {
-        margin: 0 0 10px;
-        font-size: 14px;
-      }
-      .history ul {
-        list-style: none;
-        margin: 0;
-        padding: 0;
-        display: grid;
-        gap: 8px;
-      }
-      .history li {
-        display: flex;
-        justify-content: space-between;
-        gap: 12px;
-        border-bottom: 1px solid #f1f2f7;
-        padding-bottom: 8px;
-      }
-      .history li:last-child {
-        border-bottom: 0;
-        padding-bottom: 0;
-      }
-      .history .meta {
-        color: #666;
-        font-size: 12px;
-        white-space: nowrap;
-      }
-      code {
-        background: #fff;
-        border: 1px solid #d8e2ff;
-        padding: 2px 6px;
-        border-radius: 6px;
-      }
-    </style>
+    <link rel="stylesheet" href="/web/index.css?v=1" />
   </head>
   <body>
     <main>
-      <h1>Peta</h1>
-      <p>HTMLを貼り付けるか、HTMLファイルをアップロードして共有URLを発行します。</p>
+      <section class="app-card">
+        <div class="title-row">
+          <h1>Peta</h1>
+          <span class="title-badge">ぺたっと共有</span>
+        </div>
+        <p class="lead">HTMLを貼り付けるか、HTMLファイルをアップロードして共有URLを発行します。</p>
 
-      <div class="upload-mode">
-        <label for="htmlFileInput">HTMLファイルをアップロード (.html/.htm)</label>
-        <input id="htmlFileInput" type="file" accept=".html,.htm,text/html" />
-      </div>
+        <div class="upload-mode">
+          <label for="htmlFileInput">HTMLファイルをアップロード (.html/.htm)</label>
+          <div class="file-picker-row">
+            <button id="filePickButton" class="file-picker-button" type="button">
+              ファイルをえらぶ
+            </button>
+            <input
+              id="htmlFileInput"
+              class="file-picker-input"
+              type="file"
+              accept=".html,.htm,text/html"
+            />
+          </div>
+          <div id="dropZone" class="drop-zone" role="button" tabindex="0">
+            ここにHTMLファイルをドラッグ&ドロップ
+          </div>
+          <div id="fileHint" class="file-hint">選択中ファイル: なし</div>
+        </div>
 
-      <textarea id="htmlInput" placeholder="<h1>Hello World</h1>"></textarea>
+        <details class="html-accordion">
+          <summary>HTMLを直接貼り付ける</summary>
+          <textarea id="htmlInput" placeholder="<h1>Hello World</h1>"></textarea>
+        </details>
 
-      <div class="actions">
-        <button id="uploadButton">アップロード</button>
-      </div>
+        <div class="actions">
+          <button id="uploadButton">アップロード</button>
+        </div>
 
-      <div id="error"></div>
+        <div id="error"></div>
 
-      <div id="result">
-        共有URL:
-        <a id="resultLink" href="#" target="_blank" rel="noreferrer noopener"></a>
-      </div>
+        <div id="result">
+          共有URL:
+          <a id="resultLink" href="#" target="_blank" rel="noreferrer noopener"></a>
+        </div>
 
-      <section class="history">
-        <h2>発行した共有リンク履歴</h2>
-        <ul id="historyList"></ul>
+        <section class="history">
+          <h2>発行した共有リンク履歴</h2>
+          <ul id="historyList"></ul>
+        </section>
+
+        <div class="tips">
+          <span class="dot"></span>
+          ファイル選択/ドラッグ&ドロップ時はファイル内容を優先してアップロードします
+        </div>
       </section>
     </main>
 
     <script>
       const htmlInput = document.getElementById("htmlInput");
+      const filePickButton = document.getElementById("filePickButton");
       const htmlFileInput = document.getElementById("htmlFileInput");
+      const dropZone = document.getElementById("dropZone");
+      const fileHint = document.getElementById("fileHint");
       const uploadButton = document.getElementById("uploadButton");
       const result = document.getElementById("result");
       const resultLink = document.getElementById("resultLink");
       const error = document.getElementById("error");
       const historyList = document.getElementById("historyList");
+      let selectedFile = null;
+
+      function isHTMLFile(file) {
+        if (!file || !file.name) {
+          return false;
+        }
+        const name = file.name.toLowerCase();
+        return name.endsWith(".html") || name.endsWith(".htm");
+      }
+
+      function setSelectedFile(file) {
+        if (!file) {
+          selectedFile = null;
+          fileHint.textContent = "選択中ファイル: なし";
+          return;
+        }
+        if (!isHTMLFile(file)) {
+          error.textContent = "`.html` または `.htm` ファイルを選択してください。";
+          return;
+        }
+        selectedFile = file;
+        fileHint.textContent = `選択中ファイル: ${file.name}`;
+        error.textContent = "";
+      }
 
       function formatDateTime(raw) {
         const date = new Date(raw);
@@ -217,9 +154,51 @@
         }
       }
 
+      htmlFileInput.addEventListener("change", () => {
+        const file = htmlFileInput.files && htmlFileInput.files[0];
+        setSelectedFile(file || null);
+      });
+
+      filePickButton.addEventListener("click", () => {
+        htmlFileInput.click();
+      });
+
+      dropZone.addEventListener("click", () => {
+        htmlFileInput.click();
+      });
+
+      dropZone.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          htmlFileInput.click();
+        }
+      });
+
+      dropZone.addEventListener("dragenter", (event) => {
+        event.preventDefault();
+        dropZone.classList.add("active");
+      });
+
+      dropZone.addEventListener("dragover", (event) => {
+        event.preventDefault();
+      });
+
+      dropZone.addEventListener("dragleave", (event) => {
+        if (!dropZone.contains(event.relatedTarget)) {
+          dropZone.classList.remove("active");
+        }
+      });
+
+      dropZone.addEventListener("drop", (event) => {
+        event.preventDefault();
+        dropZone.classList.remove("active");
+        const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
+        setSelectedFile(file || null);
+      });
+
       uploadButton.addEventListener("click", async () => {
         const html = htmlInput.value.trim();
-        const file = htmlFileInput.files && htmlFileInput.files[0];
+        const file = selectedFile;
         result.style.display = "none";
         error.textContent = "";
 

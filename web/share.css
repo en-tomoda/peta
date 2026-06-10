@@ -1,0 +1,44 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: #fff;
+}
+body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.preview-header {
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  box-sizing: border-box;
+  padding: 0 12px;
+  font: 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #5b4d3d;
+  background: linear-gradient(90deg, #fff8df, #fff2cf);
+  border-bottom: 1px solid #e8d2a4;
+}
+.preview-header strong {
+  font-weight: 600;
+}
+.preview-header a {
+  color: inherit;
+  text-decoration: none;
+}
+.preview-header a:hover {
+  text-decoration: underline;
+}
+.preview-header .page-id {
+  color: #8a795f;
+}
+iframe {
+  display: block;
+  width: 100%;
+  height: calc(100% - 36px);
+  border: 0;
+}
