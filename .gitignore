@@ -1,0 +1,13 @@
+# macOS
+.DS_Store
+
+# Build artifacts
+bin/
+dist/
+*.exe
+*.out
+
+# Local database files
+data/*.db
+data/*.db-*
+
