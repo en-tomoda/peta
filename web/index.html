@@ -62,7 +62,18 @@
         </div>
 
         <section class="history">
-          <h2>History</h2>
+          <div class="history-head">
+            <h2 id="historyTitle">History</h2>
+            <div class="folder-row">
+              <div id="folderTabs" class="folder-tabs"></div>
+              <button id="newFolderBtn" class="new-folder-btn" type="button" title="新しいフォルダ">＋</button>
+            </div>
+          </div>
+          <div id="newFolderRow" class="new-folder-row" style="display:none">
+            <input id="newFolderInput" type="text" placeholder="フォルダ名" maxlength="32" />
+            <button id="folderConfirmBtn" type="button">作成</button>
+            <button id="folderCancelBtn" type="button">取消</button>
+          </div>
           <ul id="historyList"></ul>
         </section>
 
@@ -224,12 +235,132 @@
 
     function formatDateTime(raw) { const d = new Date(raw); return isNaN(d) ? raw : d.toLocaleString('ja-JP'); }
 
+    // ===== FOLDERS =====
+    let folders = [];
+    let activeFolderId = undefined; // undefined=All, null=unassigned, string=folder id
+    let folderMenuEl = null;
+
+    function closeFolderMenu() { if (folderMenuEl) { folderMenuEl.remove(); folderMenuEl = null; } }
+
+    function openFolderMenu(item, anchor) {
+      closeFolderMenu();
+      const menu = document.createElement('div');
+      menu.className = 'folder-menu';
+
+      const opts = [{ id: null, name: 'フォルダなし' }, ...folders];
+      for (const f of opts) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = f.name;
+        if (item.folder_id === f.id) btn.classList.add('current');
+        btn.addEventListener('click', async e => {
+          e.stopPropagation();
+          closeFolderMenu();
+          await fetch(`/page/${item.id}/folder`, { method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify({folder_id: f.id}) });
+          await Promise.all([loadFolders(), loadHistory()]);
+        });
+        menu.appendChild(btn);
+      }
+
+      document.body.appendChild(menu);
+      folderMenuEl = menu;
+      const r = anchor.getBoundingClientRect();
+      menu.style.left = r.left + 'px';
+      menu.style.top  = (r.bottom + 4) + 'px';
+      requestAnimationFrame(() => {
+        const mr = menu.getBoundingClientRect();
+        if (mr.right  > innerWidth)  menu.style.left = (innerWidth  - mr.width  - 8) + 'px';
+        if (mr.bottom > innerHeight) menu.style.top  = (r.top - mr.height - 4) + 'px';
+      });
+      setTimeout(() => document.addEventListener('click', closeFolderMenu, { once: true }), 0);
+    }
+
+    async function loadFolders() {
+      try {
+        const res = await fetch('/folders');
+        if (!res.ok) return;
+        folders = await res.json() || [];
+        renderFolderTabs();
+      } catch {}
+    }
+
+    function renderFolderTabs() {
+      const tabs = document.getElementById('folderTabs');
+      tabs.innerHTML = '';
+
+      const mkTab = (label, fid, count) => {
+        const btn = document.createElement('button');
+        btn.type = 'button'; btn.className = 'folder-tab';
+        const isActive = fid === activeFolderId;
+        if (isActive) btn.classList.add('active');
+
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = label;
+        btn.appendChild(nameSpan);
+
+        if (count != null) {
+          const c = document.createElement('span'); c.className = 'tab-count'; c.textContent = count;
+          btn.appendChild(c);
+        }
+        btn.addEventListener('click', () => { activeFolderId = fid; renderFolderTabs(); loadHistory(); });
+
+        if (typeof fid === 'string') {
+          const x = document.createElement('button');
+          x.type = 'button'; x.className = 'del-folder-btn'; x.textContent = '×'; x.title = 'フォルダを削除';
+          x.addEventListener('click', async e => {
+            e.stopPropagation();
+            if (!confirm(`フォルダ「${label}」を削除しますか？\n（ページの割り当ては解除されます）`)) return;
+            await fetch(`/folder/${fid}`, { method: 'DELETE' });
+            if (activeFolderId === fid) activeFolderId = undefined;
+            await Promise.all([loadFolders(), loadHistory()]);
+          });
+          btn.appendChild(x);
+        }
+        tabs.appendChild(btn);
+      };
+
+      mkTab('All', undefined, null);
+      folders.forEach(f => mkTab(f.name, f.id, f.count));
+    }
+
+    // New folder controls
+    const newFolderBtn    = document.getElementById('newFolderBtn');
+    const newFolderRow    = document.getElementById('newFolderRow');
+    const newFolderInput  = document.getElementById('newFolderInput');
+    const folderConfirmBtn= document.getElementById('folderConfirmBtn');
+    const folderCancelBtn = document.getElementById('folderCancelBtn');
+
+    newFolderBtn.addEventListener('click', () => { newFolderRow.style.display = 'flex'; newFolderInput.focus(); });
+    folderCancelBtn.addEventListener('click', () => { newFolderRow.style.display = 'none'; newFolderInput.value = ''; });
+    folderConfirmBtn.addEventListener('click', async () => {
+      const name = newFolderInput.value.trim();
+      if (!name) return;
+      await fetch('/folders', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name}) });
+      newFolderRow.style.display = 'none'; newFolderInput.value = '';
+      await loadFolders();
+    });
+    newFolderInput.addEventListener('keydown', e => { if (e.key === 'Enter') folderConfirmBtn.click(); if (e.key === 'Escape') folderCancelBtn.click(); });
+
+    // ===== HISTORY =====
     function renderHistoryItem(item) {
       const li = document.createElement('li');
+      li.dataset.id = item.id;
+      li.draggable = true;
+
+      const grip = document.createElement('span');
+      grip.className = 'drag-grip'; grip.setAttribute('aria-hidden', 'true'); grip.textContent = '⠿';
+
       const a = document.createElement('a');
       a.href = item.url; a.target = '_blank'; a.rel = 'noreferrer noopener';
       a.textContent = item.title || item.url;
       const meta = document.createElement('span'); meta.className = 'meta'; meta.textContent = formatDateTime(item.created_at);
+
+      const folder = document.createElement('button');
+      folder.type = 'button'; folder.className = 'folder-btn'; folder.title = 'フォルダに移動';
+      if (item.folder_id) folder.classList.add('assigned');
+      folder.innerHTML = '<svg width="12" height="11" viewBox="0 0 12 11" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M1 2.5C1 1.95 1.45 1.5 2 1.5H4.5L5.5 2.5H10C10.55 2.5 11 2.95 11 3.5V8.5C11 9.05 10.55 9.5 10 9.5H2C1.45 9.5 1 9.05 1 8.5V2.5Z" stroke="currentColor" stroke-width="1.2" fill="none"/></svg>';
+      folder.addEventListener('click', e => { e.stopPropagation(); openFolderMenu(item, folder); });
+
       const del = document.createElement('button');
       del.className = 'del-btn'; del.type = 'button'; del.textContent = '×'; del.title = '削除';
       del.addEventListener('click', async () => {
@@ -238,14 +369,27 @@
           const res = await fetch(`/page/${item.id}`, { method: 'DELETE' });
           if (!res.ok) throw new Error();
           li.remove();
+          await loadFolders();
         } catch { error.textContent = '削除に失敗しました。'; }
       });
-      li.appendChild(a); li.appendChild(meta); li.appendChild(del); return li;
+      li.appendChild(grip); li.appendChild(a); li.appendChild(meta); li.appendChild(folder); li.appendChild(del); return li;
     }
 
     async function loadHistory() {
+      const url = activeFolderId === undefined ? '/history'
+                : activeFolderId === null      ? '/history?folder_id=__none__'
+                : `/history?folder_id=${activeFolderId}`;
+      const title = document.getElementById('historyTitle');
+      if (activeFolderId === undefined) {
+        title.textContent = 'History';
+      } else if (activeFolderId === null) {
+        title.textContent = 'History — フォルダなし';
+      } else {
+        const f = folders.find(f => f.id === activeFolderId);
+        title.textContent = `History — ${f ? f.name : ''}`;
+      }
       try {
-        const res = await fetch('/history');
+        const res = await fetch(url);
         if (!res.ok) throw new Error('履歴の取得に失敗しました。');
         const items = await res.json();
         historyList.innerHTML = '';
@@ -290,7 +434,58 @@
       catch { copyButton.textContent = 'Failed'; }
     });
 
-    loadHistory();
+    loadFolders().then(() => loadHistory());
+
+    // ===== DRAG-AND-DROP HISTORY REORDER =====
+    let dragSrcId = null, dragIndicatorEl = null;
+
+    function clearDragIndicator() {
+      if (dragIndicatorEl) { dragIndicatorEl.classList.remove('drop-above', 'drop-below'); dragIndicatorEl = null; }
+    }
+
+    historyList.addEventListener('dragstart', e => {
+      const li = e.target.closest('li[data-id]');
+      if (!li) return;
+      dragSrcId = li.dataset.id;
+      li.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', dragSrcId);
+    });
+
+    historyList.addEventListener('dragend', e => {
+      const li = e.target.closest('li[data-id]');
+      if (li) li.classList.remove('dragging');
+      clearDragIndicator();
+      dragSrcId = null;
+    });
+
+    historyList.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const li = e.target.closest('li[data-id]');
+      if (!li || li.classList.contains('dragging')) { clearDragIndicator(); return; }
+      const isAbove = e.clientY < li.getBoundingClientRect().top + li.getBoundingClientRect().height / 2;
+      if (dragIndicatorEl !== li) { clearDragIndicator(); dragIndicatorEl = li; }
+      li.classList.toggle('drop-above', isAbove);
+      li.classList.toggle('drop-below', !isAbove);
+    });
+
+    historyList.addEventListener('dragleave', e => {
+      if (!historyList.contains(e.relatedTarget)) clearDragIndicator();
+    });
+
+    historyList.addEventListener('drop', async e => {
+      e.preventDefault();
+      const li = e.target.closest('li[data-id]');
+      clearDragIndicator();
+      if (!dragSrcId || !li || li.dataset.id === dragSrcId) return;
+      const srcEl = historyList.querySelector(`li[data-id="${CSS.escape(dragSrcId)}"]`);
+      if (!srcEl) return;
+      const isAbove = e.clientY < li.getBoundingClientRect().top + li.getBoundingClientRect().height / 2;
+      historyList.insertBefore(srcEl, isAbove ? li : li.nextSibling);
+      const ids = [...historyList.querySelectorAll('li[data-id]')].map(el => el.dataset.id);
+      try { await fetch('/history/reorder', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(ids) }); } catch {}
+    });
     </script>
 
     <!-- Three.js — only used for SW Easter egg -->

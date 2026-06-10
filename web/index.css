@@ -284,15 +284,100 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 /* ===== HISTORY ===== */
 .history { margin-top: 26px; padding-top: 20px; border-top: 1px solid var(--border); }
-.history h2 {
-  margin: 0 0 12px;
+.history-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px; margin-bottom: 10px; flex-wrap: wrap;
+}
+.history-head h2 {
+  margin: 0;
   font-family: 'Inter', sans-serif;
   font-size: 10px; font-weight: 700; letter-spacing: 0.18em; text-transform: uppercase; color: var(--sub);
+  flex-shrink: 0; padding-top: 4px;
 }
+.folder-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; flex: 1; justify-content: flex-end; }
+.folder-tabs { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
+
+.folder-tab {
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
+  border: 1px solid var(--border); border-radius: 1px;
+  background: transparent; color: var(--sub);
+  padding: 2px 8px; cursor: pointer; display: flex; align-items: center; gap: 5px;
+  transition: border-color 100ms, color 100ms, background 100ms;
+}
+.folder-tab:hover { border-color: var(--text); color: var(--text); }
+.folder-tab.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.tab-count { font-size: 9px; opacity: 0.65; }
+.del-folder-btn {
+  border: none; background: none; padding: 0; margin-left: 1px;
+  font-size: 12px; line-height: 1; cursor: pointer; color: inherit;
+  opacity: 0; transition: opacity 100ms, color 100ms;
+}
+.folder-tab:hover .del-folder-btn { opacity: 0.5; }
+.del-folder-btn:hover { opacity: 1 !important; color: #e05040; }
+
+.new-folder-btn {
+  font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600;
+  border: 1.5px dashed var(--border); border-radius: 1px;
+  background: transparent; color: var(--sub);
+  padding: 2px 8px; cursor: pointer; flex-shrink: 0;
+  transition: border-color 100ms, color 100ms;
+}
+.new-folder-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.new-folder-row {
+  display: none; align-items: center; gap: 6px; margin-bottom: 10px;
+}
+.new-folder-row input {
+  font-family: 'Inter', 'Noto Sans JP', sans-serif; font-size: 12px;
+  border: 1px solid var(--border); border-radius: 1px;
+  background: var(--surface2); color: var(--text);
+  padding: 5px 10px; flex: 1; outline: none;
+  transition: border-color 120ms;
+}
+.new-folder-row input:focus { border-color: var(--accent); }
+.new-folder-row button {
+  font-family: 'Inter', sans-serif; font-size: 11px; font-weight: 600;
+  border-radius: 1px; padding: 5px 12px; cursor: pointer;
+}
+.new-folder-row button:first-of-type { border: none; background: var(--accent); color: #fff; }
+.new-folder-row button:last-of-type  { border: 1px solid var(--border); background: transparent; color: var(--sub); }
+
+/* Folder assign button on history items */
+.folder-btn {
+  border: none; background: none; color: var(--sub);
+  cursor: pointer; padding: 0 2px; flex-shrink: 0;
+  opacity: 0; display: flex; align-items: center;
+  transition: opacity 150ms, color 150ms;
+}
+.history li:hover .folder-btn { opacity: 0.7; }
+.folder-btn.assigned { opacity: 0.55; color: var(--accent); }
+.history li:hover .folder-btn.assigned { opacity: 1; }
+.folder-btn:hover { color: var(--accent) !important; opacity: 1 !important; }
+
+/* Folder popover menu */
+.folder-menu {
+  position: fixed; z-index: 200;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 2px;
+  box-shadow: 0 4px 16px var(--shadow); min-width: 130px; padding: 4px;
+}
+.folder-menu button {
+  display: block; width: 100%; text-align: left; border-radius: 1px;
+  font-family: 'Inter', 'Noto Sans JP', sans-serif; font-size: 12px;
+  border: none; background: none; color: var(--text);
+  padding: 6px 10px; cursor: pointer;
+  transition: background 80ms;
+}
+.folder-menu button:hover { background: var(--accent-dim); }
+.folder-menu button.current { color: var(--accent); font-weight: 600; }
 .history ul { list-style: none; margin: 0; padding: 0; }
-.history li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.history li {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 8px 0; border-bottom: 1px solid var(--border);
+  transition: opacity 150ms;
+  cursor: default;
+}
 .history li:first-child { border-top: 1px solid var(--border); }
-.history li a { color: var(--text); text-decoration: none; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color 100ms; }
+.history li a { color: var(--text); text-decoration: none; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: color 100ms; flex: 1; min-width: 0; }
 .history li a:hover { color: var(--accent); }
 .history .meta { font-family: 'Inter', monospace; font-size: 11px; color: var(--sub); white-space: nowrap; flex-shrink: 0; }
 .del-btn {
@@ -303,6 +388,21 @@ textarea:focus { outline: 2px solid var(--accent); outline-offset: -2px; }
 }
 .history li:hover .del-btn { opacity: 1; }
 .del-btn:hover { color: #e05040; }
+
+/* Drag grip */
+.drag-grip {
+  flex-shrink: 0; cursor: grab; color: var(--sub);
+  opacity: 0; font-size: 12px; line-height: 1;
+  user-select: none; -webkit-user-select: none;
+  transition: opacity 150ms;
+}
+.history li:hover .drag-grip { opacity: 0.4; }
+.drag-grip:hover { opacity: 0.9 !important; }
+
+/* Drag-and-drop states */
+.history li.dragging { opacity: 0.35; }
+.history li.drop-above { border-top: 2px solid var(--accent); }
+.history li.drop-below { border-bottom: 2px solid var(--accent); }
 
 /* ===== TIPS ===== */
 .tips { margin: 14px 0 0; font-size: 11px; color: var(--sub); display: flex; align-items: center; gap: 6px; }
