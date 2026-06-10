@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- Background -->
+  <rect width="32" height="32" rx="6" fill="#1e50d6"/>
+  <!-- Top accent bar -->
+  <rect width="32" height="4" rx="0" fill="#0f35b8"/>
+  <rect width="32" height="4" rx="6" fill="#0f35b8"/>
+  <!-- Letter P as path for cross-browser consistency -->
+  <path d="M10 8 L10 25 L13 25 L13 17 L19 17 Q25 17 25 12.5 Q25 8 19 8 Z
+           M13 10.5 L18.5 10.5 Q22 10.5 22 12.5 Q22 14.5 18.5 14.5 L13 14.5 Z"
+        fill="#ffffff" fill-rule="evenodd"/>
+</svg>

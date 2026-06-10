@@ -1,65 +1,58 @@
 <!doctype html>
-<html lang="ja">
+<html lang="ja" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Peta Share</title>
-    <style>
-      html,
-      body {
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        height: 100%;
-        background: #fff;
-      }
-      body {
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-      }
-      .preview-header {
-        height: 32px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        box-sizing: border-box;
-        padding: 0 10px;
-        font: 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        color: #2f2f2f;
-        background: #f6f7fb;
-        border-bottom: 1px solid #dcdfea;
-      }
-      .preview-header strong {
-        font-weight: 600;
-      }
-      .preview-header a {
-        color: inherit;
-        text-decoration: none;
-      }
-      .preview-header a:hover {
-        text-decoration: underline;
-      }
-      .preview-header .page-id {
-        color: #666;
-      }
-      iframe {
-        display: block;
-        width: 100%;
-        height: calc(100% - 32px);
-        border: 0;
-      }
-    </style>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+    <link rel="icon" type="image/svg+xml" href="/web/favicon.svg" />
+    <link rel="stylesheet" href="/web/share.css" />
   </head>
   <body>
-    <header class="preview-header">
-      <strong><a href="/">Peta Preview</a></strong>
-      <span class="page-id">ID: {{.ID}}</span>
+    <header class="preview-header" id="previewHeader">
+      <div class="header-left">
+        <a class="header-brand" href="/">Peta</a>
+        <span class="header-sep">/</span>
+        <span class="header-id">{{.ID}}</span>
+      </div>
+      <button class="header-toggle" id="headerToggle" type="button" title="ヘッダーを隠す">
+        <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M1 7L6 2L11 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </header>
+
+    <button class="header-tab" id="headerTab" type="button" title="ヘッダーを表示">
+      <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M1 1L6 6L11 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+
     <iframe
       src="/content/{{.ID}}"
       sandbox="allow-scripts allow-forms"
       referrerpolicy="no-referrer"
     ></iframe>
+
+    <script>
+      const saved = localStorage.getItem("peta-theme") || "light";
+      document.documentElement.dataset.theme = saved;
+
+      const body         = document.body;
+      const headerTab    = document.getElementById('headerTab');
+      const headerToggle = document.getElementById('headerToggle');
+      const HIDDEN_KEY   = 'peta-header-hidden';
+
+      function setHidden(hide, save) {
+        body.classList.toggle('header-hidden', hide);
+        if (save) localStorage.setItem(HIDDEN_KEY, hide ? '1' : '0');
+      }
+
+      setHidden(localStorage.getItem(HIDDEN_KEY) === '1', false);
+      headerToggle.addEventListener('click', () => setHidden(true,  true));
+      headerTab   .addEventListener('click', () => setHidden(false, true));
+    </script>
   </body>
 </html>

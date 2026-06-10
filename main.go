@@ -42,10 +42,26 @@ type uploadResponse struct {
 }
 
 type historyItem struct {
+	ID        string  `json:"id"`
+	Title     string  `json:"title,omitempty"`
+	FolderID  *string `json:"folder_id,omitempty"`
+	URL       string  `json:"url"`
+	CreatedAt string  `json:"created_at"`
+}
+
+type folderItem struct {
 	ID        string `json:"id"`
-	Title     string `json:"title,omitempty"`
-	URL       string `json:"url"`
+	Name      string `json:"name"`
+	Count     int    `json:"count"`
 	CreatedAt string `json:"created_at"`
+}
+
+type createFolderRequest struct {
+	Name string `json:"name"`
+}
+
+type assignFolderRequest struct {
+	FolderID *string `json:"folder_id"`
 }
 
 func main() {
@@ -68,11 +84,18 @@ func main() {
 
 	application := &app{db: db}
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", application.handleIndex)
+	mux.Handle("/web/", http.StripPrefix("/web/", http.FileServer(http.Dir("web"))))
+	mux.HandleFunc("/", application.handleIndex)
 	mux.HandleFunc("POST /upload", application.handleUpload)
 	mux.HandleFunc("GET /history", application.handleHistory)
 	mux.HandleFunc("GET /share/{id}", application.handleShare)
 	mux.HandleFunc("GET /content/{id}", application.handleContent)
+	mux.HandleFunc("DELETE /page/{id}", application.handleDelete)
+	mux.HandleFunc("GET /folders", application.handleGetFolders)
+	mux.HandleFunc("POST /folders", application.handleCreateFolder)
+	mux.HandleFunc("DELETE /folder/{id}", application.handleDeleteFolder)
+	mux.HandleFunc("PATCH /page/{id}/folder", application.handleAssignFolder)
+	mux.HandleFunc("POST /history/reorder", application.handleReorder)
 
 	addr := ":8080"
 	log.Printf("peta started at http://localhost%s", addr)
@@ -97,18 +120,36 @@ func migrateLegacyDBFile() error {
 }
 
 func migrate(db *sql.DB) error {
-	_, err := db.Exec(`
+	if _, err := db.Exec(`
 CREATE TABLE IF NOT EXISTS pages (
     id TEXT PRIMARY KEY,
     title TEXT,
     html TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-`)
-	return err
+);`); err != nil {
+		return err
+	}
+	if _, err := db.Exec(`
+CREATE TABLE IF NOT EXISTS folders (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);`); err != nil {
+		return err
+	}
+	// Idempotent: ignore error if column already exists
+	db.Exec(`ALTER TABLE pages ADD COLUMN folder_id TEXT REFERENCES folders(id)`)
+	db.Exec(`ALTER TABLE pages ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`)
+	// Seed sort_order from rowid so existing items keep their insertion order
+	db.Exec(`UPDATE pages SET sort_order = rowid WHERE sort_order = 0`)
+	return nil
 }
 
 func (a *app) handleIndex(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 	http.ServeFile(w, r, "web/index.html")
 }
 
@@ -241,7 +282,9 @@ func (a *app) handleShare(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *app) handleHistory(w http.ResponseWriter, r *http.Request) {
-	items, err := a.listHistory(r.Context(), maxHistory)
+	folderFilter := r.URL.Query().Get("folder_id")
+	sortKey      := r.URL.Query().Get("sort")
+	items, err := a.listHistory(r.Context(), maxHistory, folderFilter, sortKey)
 	if err != nil {
 		http.Error(w, "failed to load history", http.StatusInternalServerError)
 		return
@@ -282,8 +325,8 @@ func (a *app) insertPage(ctx context.Context, id, title, html string) error {
 	defer cancel()
 
 	_, err := a.db.ExecContext(ctx, `
-INSERT INTO pages(id, title, html)
-VALUES(?, ?, ?)
+INSERT INTO pages(id, title, html, sort_order)
+VALUES(?, ?, ?, (SELECT COALESCE(MAX(sort_order), 0) + 1 FROM pages))
 `, id, title, html)
 	return err
 }
@@ -301,16 +344,35 @@ WHERE id = ?
 	return html, err
 }
 
-func (a *app) listHistory(ctx context.Context, limit int) ([]historyItem, error) {
+func (a *app) listHistory(ctx context.Context, limit int, folderFilter, sortKey string) ([]historyItem, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	rows, err := a.db.QueryContext(ctx, `
-SELECT id, title, created_at
-FROM pages
-ORDER BY datetime(created_at) DESC, rowid DESC
-LIMIT ?
-`, limit)
+	order := "sort_order DESC, rowid DESC"
+	switch sortKey {
+	case "asc":
+		order = "datetime(created_at) ASC, rowid ASC"
+	case "title":
+		order = "LOWER(COALESCE(NULLIF(title,''), id)) ASC"
+	}
+
+	var (
+		query string
+		args  []any
+	)
+	switch folderFilter {
+	case "__none__":
+		query = `SELECT id, title, folder_id, created_at FROM pages WHERE folder_id IS NULL ORDER BY ` + order + ` LIMIT ?`
+		args = []any{limit}
+	case "":
+		query = `SELECT id, title, folder_id, created_at FROM pages ORDER BY ` + order + ` LIMIT ?`
+		args = []any{limit}
+	default:
+		query = `SELECT id, title, folder_id, created_at FROM pages WHERE folder_id = ? ORDER BY ` + order + ` LIMIT ?`
+		args = []any{folderFilter, limit}
+	}
+
+	rows, err := a.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -319,20 +381,182 @@ LIMIT ?
 	items := make([]historyItem, 0, limit)
 	for rows.Next() {
 		var item historyItem
-		var title sql.NullString
-		if err := rows.Scan(&item.ID, &title, &item.CreatedAt); err != nil {
+		var title, folderID sql.NullString
+		if err := rows.Scan(&item.ID, &title, &folderID, &item.CreatedAt); err != nil {
 			return nil, err
 		}
 		if title.Valid {
 			item.Title = title.String
 		}
+		if folderID.Valid {
+			item.FolderID = &folderID.String
+		}
 		item.URL = "/share/" + item.ID
 		items = append(items, item)
 	}
-	if err := rows.Err(); err != nil {
+	return items, rows.Err()
+}
+
+func (a *app) handleGetFolders(w http.ResponseWriter, r *http.Request) {
+	items, err := a.listFolders(r.Context())
+	if err != nil {
+		http.Error(w, "failed to load folders", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(items)
+}
+
+func (a *app) handleCreateFolder(w http.ResponseWriter, r *http.Request) {
+	var req createFolderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Name) == "" {
+		http.Error(w, "name is required", http.StatusBadRequest)
+		return
+	}
+	id, err := newID()
+	if err != nil {
+		http.Error(w, "failed to generate id", http.StatusInternalServerError)
+		return
+	}
+	if err := a.createFolder(r.Context(), id, strings.TrimSpace(req.Name)); err != nil {
+		http.Error(w, "failed to create folder", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(folderItem{ID: id, Name: strings.TrimSpace(req.Name)})
+}
+
+func (a *app) handleDeleteFolder(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		http.NotFound(w, r)
+		return
+	}
+	if err := a.deleteFolder(r.Context(), id); err != nil {
+		http.Error(w, "failed to delete folder", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *app) handleAssignFolder(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		http.NotFound(w, r)
+		return
+	}
+	var req assignFolderRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	if err := a.assignFolder(r.Context(), id, req.FolderID); err != nil {
+		http.Error(w, "failed to assign folder", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *app) handleDelete(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		http.NotFound(w, r)
+		return
+	}
+	if err := a.deletePage(r.Context(), id); err != nil {
+		http.Error(w, "failed to delete page", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *app) handleReorder(w http.ResponseWriter, r *http.Request) {
+	var ids []string
+	if err := json.NewDecoder(r.Body).Decode(&ids); err != nil || len(ids) == 0 {
+		http.Error(w, "ids array required", http.StatusBadRequest)
+		return
+	}
+	if err := a.reorderPages(r.Context(), ids); err != nil {
+		http.Error(w, "failed to reorder", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *app) reorderPages(ctx context.Context, ids []string) error {
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	stmt, err := tx.PrepareContext(ctx, `UPDATE pages SET sort_order = ? WHERE id = ?`)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+	// ids[0] = top of list → highest sort_order so DESC query returns it first
+	total := len(ids)
+	for i, id := range ids {
+		if _, err := stmt.ExecContext(ctx, total-i, id); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+func (a *app) deletePage(ctx context.Context, id string) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	_, err := a.db.ExecContext(ctx, `DELETE FROM pages WHERE id = ?`, id)
+	return err
+}
+
+func (a *app) listFolders(ctx context.Context) ([]folderItem, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	rows, err := a.db.QueryContext(ctx, `
+SELECT f.id, f.name, f.created_at, COUNT(p.id)
+FROM folders f LEFT JOIN pages p ON p.folder_id = f.id
+GROUP BY f.id ORDER BY f.created_at ASC`)
+	if err != nil {
 		return nil, err
 	}
-	return items, nil
+	defer rows.Close()
+	var items []folderItem
+	for rows.Next() {
+		var f folderItem
+		if err := rows.Scan(&f.ID, &f.Name, &f.CreatedAt, &f.Count); err != nil {
+			return nil, err
+		}
+		items = append(items, f)
+	}
+	return items, rows.Err()
+}
+
+func (a *app) createFolder(ctx context.Context, id, name string) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	_, err := a.db.ExecContext(ctx, `INSERT INTO folders(id, name) VALUES(?, ?)`, id, name)
+	return err
+}
+
+func (a *app) deleteFolder(ctx context.Context, id string) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	if _, err := a.db.ExecContext(ctx, `UPDATE pages SET folder_id = NULL WHERE folder_id = ?`, id); err != nil {
+		return err
+	}
+	_, err := a.db.ExecContext(ctx, `DELETE FROM folders WHERE id = ?`, id)
+	return err
+}
+
+func (a *app) assignFolder(ctx context.Context, pageID string, folderID *string) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	_, err := a.db.ExecContext(ctx, `UPDATE pages SET folder_id = ? WHERE id = ?`, folderID, pageID)
+	return err
 }
 
 func newID() (string, error) {
