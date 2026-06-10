@@ -1,6 +1,6 @@
 # Peta
 
-![Version](https://img.shields.io/badge/version-v0.1.0-blue)
+![Version](https://img.shields.io/badge/version-v0.2.0-blue)
 ![Go](https://img.shields.io/badge/Go-1.22-00ADD8?logo=go)
 ![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite)
 
@@ -19,9 +19,13 @@ HTMLをすぐに共有できる、社内向けの軽量プレビューツール
 - HTMLテキスト貼り付けアップロード
 - `.html` / `.htm` ファイルアップロード
 - 共有URL発行（`/share/:id`）
-- 共有ページ上部にプレビューヘッダー表示（`Peta Preview` をクリックでホームへ）
 - `iframe sandbox` 経由の表示
 - 発行済み共有リンク履歴の表示（最新50件）
+- 履歴アイテムの削除
+- 履歴のドラッグ&ドロップ並べ替え
+- フォルダ機能（作成・削除・アイテムの割り当て・フォルダ別フィルタ）
+- 共有ページのヘッダー表示／非表示トグル（状態はブラウザに保存）
+- ライト／ダークテーマ切り替え（状態はブラウザに保存）
 
 ## 使い方（Quick Start）
 
@@ -79,17 +83,54 @@ Response:
 
 ### `GET /history`
 
-発行済み共有リンク履歴（最新50件）を返します。
+発行済み共有リンク履歴（最新50件）を返します。`folder_id` クエリパラメータでフォルダ絞り込みが可能です（`__none__` を指定するとフォルダ未割り当てのみ）。
 
 ```json
 [
   {
     "id": "abc123...",
     "title": "sample.html",
+    "folder_id": "def456...",
     "url": "/share/abc123...",
     "created_at": "2026-06-11 00:00:00"
   }
 ]
+```
+
+### `DELETE /page/:id`
+
+履歴からページを削除します。
+
+### `POST /history/reorder`
+
+履歴の並び順を更新します。ボディにIDの配列を渡すと、その順序で保存されます。
+
+```json
+["abc123", "def456", "ghi789"]
+```
+
+### `GET /folders`
+
+フォルダ一覧とそれぞれのアイテム数を返します。
+
+### `POST /folders`
+
+フォルダを新規作成します。
+
+```json
+{ "name": "フォルダ名" }
+```
+
+### `DELETE /folder/:id`
+
+フォルダを削除します。そのフォルダに割り当てられたページの割り当ては解除されます。
+
+### `PATCH /page/:id/folder`
+
+ページをフォルダに割り当てます。`folder_id` に `null` を指定すると割り当てを解除します。
+
+```json
+{ "folder_id": "def456..." }
 ```
 
 ## 技術スタック
@@ -108,7 +149,10 @@ peta/
 ├── go.sum
 ├── web/
 │   ├── index.html
-│   └── share.html
+│   ├── index.css
+│   ├── share.html
+│   ├── share.css
+│   └── favicon.svg
 ├── data/
 │   └── .gitkeep
 └── README.md
