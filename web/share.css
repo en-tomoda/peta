@@ -1,44 +1,74 @@
-html,
-body {
-  margin: 0;
-  padding: 0;
-  width: 100%;
-  height: 100%;
-  background: #fff;
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap');
+
+:root, [data-theme="light"] {
+  --bg:      #e6e2db;
+  --surface: #fafaf8;
+  --border:  #d0cbc2;
+  --text:    #1a1612;
+  --sub:     #6e6860;
+  --accent:  #1e50d6;
+}
+[data-theme="dark"] {
+  --bg:      #0b0a08;
+  --surface: #161411;
+  --border:  #2c2820;
+  --text:    #e0d9ce;
+  --sub:     #7a7268;
+  --accent:  #5899ea;
+}
+
+html, body {
+  margin: 0; padding: 0;
+  width: 100%; height: 100%;
 }
 body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  font-family: 'Inter', 'Noto Sans JP', 'Hiragino Sans', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  transition: background 200ms, color 200ms;
 }
+
 .preview-header {
-  height: 36px;
+  height: 38px;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
   box-sizing: border-box;
-  padding: 0 12px;
-  font: 12px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  color: #5b4d3d;
-  background: linear-gradient(90deg, #fff8df, #fff2cf);
-  border-bottom: 1px solid #e8d2a4;
+  padding: 0 14px;
+  font-size: 12px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  border-top: 3px solid var(--accent);
 }
 .preview-header strong {
-  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text);
 }
-.preview-header a {
-  color: inherit;
-  text-decoration: none;
-}
-.preview-header a:hover {
-  text-decoration: underline;
-}
+.preview-header a { color: inherit; text-decoration: none; }
+.preview-header a:hover { color: var(--accent); }
 .preview-header .page-id {
-  color: #8a795f;
+  font-family: 'Inter', monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sub);
+  border: 1px solid var(--border);
+  border-radius: 1px;
+  padding: 2px 8px;
 }
+
 iframe {
   display: block;
   width: 100%;
-  height: calc(100% - 36px);
+  height: calc(100% - 38px);
   border: 0;
+  background: #fff;
 }

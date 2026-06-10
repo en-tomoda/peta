@@ -1,22 +1,29 @@
 <!doctype html>
-<html lang="ja">
+<html lang="ja" data-theme="light">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Peta - HTML Upload</title>
-    <link rel="stylesheet" href="/web/index.css?v=1" />
+    <title>Peta</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/web/index.css" />
   </head>
   <body>
     <main>
       <section class="app-card">
+        <button class="theme-toggle" id="themeToggle" type="button" aria-label="テーマ切り替え">●</button>
+
         <div class="title-row">
           <h1>Peta</h1>
-          <span class="title-badge">ぺたっと共有</span>
+          <span class="title-badge">HTML Share</span>
         </div>
-        <p class="lead">HTMLを貼り付けるか、HTMLファイルをアップロードして共有URLを発行します。</p>
+        <p class="lead">HTMLファイルをアップロードして共有URLを発行します。</p>
+
+        <hr class="section-sep" />
 
         <div class="upload-mode">
-          <label for="htmlFileInput">HTMLファイルをアップロード (.html/.htm)</label>
+          <label for="htmlFileInput">HTMLファイル (.html / .htm)</label>
           <div class="file-picker-row">
             <button id="filePickButton" class="file-picker-button" type="button">
               ファイルをえらぶ
@@ -29,9 +36,10 @@
             />
           </div>
           <div id="dropZone" class="drop-zone" role="button" tabindex="0">
-            ここにHTMLファイルをドラッグ&ドロップ
+            <span class="drop-main">ドラッグ &amp; ドロップ</span>
+            <span class="drop-sub">.html / .htm</span>
           </div>
-          <div id="fileHint" class="file-hint">選択中ファイル: なし</div>
+          <div id="fileHint" class="file-hint">選択中: なし</div>
         </div>
 
         <details class="html-accordion">
@@ -40,112 +48,114 @@
         </details>
 
         <div class="actions">
-          <button id="uploadButton">アップロード</button>
+          <button id="uploadButton" type="button">共有リンクを発行する</button>
         </div>
 
         <div id="error"></div>
 
         <div id="result">
-          共有URL:
+          <div class="result-label">URL Issued</div>
           <a id="resultLink" href="#" target="_blank" rel="noreferrer noopener"></a>
+          <div class="result-actions">
+            <button class="copy-btn" id="copyButton" type="button">Copy URL</button>
+          </div>
         </div>
 
         <section class="history">
-          <h2>発行した共有リンク履歴</h2>
+          <h2>History</h2>
           <ul id="historyList"></ul>
         </section>
 
-        <div class="tips">
+        <p class="tips">
           <span class="dot"></span>
-          ファイル選択/ドラッグ&ドロップ時はファイル内容を優先してアップロードします
-        </div>
+          ファイル選択・ドラッグ時はファイル内容を優先します
+        </p>
       </section>
     </main>
 
     <script>
-      const htmlInput = document.getElementById("htmlInput");
+      // ----- theme -----
+      const html = document.documentElement;
+      const themeToggle = document.getElementById("themeToggle");
+      const saved = localStorage.getItem("peta-theme") || "light";
+      html.dataset.theme = saved;
+      themeToggle.textContent = saved === "dark" ? "○" : "●";
+
+      themeToggle.addEventListener("click", () => {
+        const next = html.dataset.theme === "light" ? "dark" : "light";
+        html.dataset.theme = next;
+        localStorage.setItem("peta-theme", next);
+        themeToggle.textContent = next === "dark" ? "○" : "●";
+      });
+
+      // ----- upload -----
+      const htmlInput    = document.getElementById("htmlInput");
       const filePickButton = document.getElementById("filePickButton");
-      const htmlFileInput = document.getElementById("htmlFileInput");
-      const dropZone = document.getElementById("dropZone");
-      const fileHint = document.getElementById("fileHint");
+      const htmlFileInput  = document.getElementById("htmlFileInput");
+      const dropZone     = document.getElementById("dropZone");
+      const fileHint     = document.getElementById("fileHint");
       const uploadButton = document.getElementById("uploadButton");
-      const result = document.getElementById("result");
-      const resultLink = document.getElementById("resultLink");
-      const error = document.getElementById("error");
-      const historyList = document.getElementById("historyList");
-      let selectedFile = null;
+      const result       = document.getElementById("result");
+      const resultLink   = document.getElementById("resultLink");
+      const copyButton   = document.getElementById("copyButton");
+      const error        = document.getElementById("error");
+      const historyList  = document.getElementById("historyList");
+      let selectedFile   = null;
 
       function isHTMLFile(file) {
-        if (!file || !file.name) {
-          return false;
-        }
-        const name = file.name.toLowerCase();
-        return name.endsWith(".html") || name.endsWith(".htm");
+        if (!file?.name) return false;
+        const n = file.name.toLowerCase();
+        return n.endsWith(".html") || n.endsWith(".htm");
       }
 
       function setSelectedFile(file) {
         if (!file) {
           selectedFile = null;
-          fileHint.textContent = "選択中ファイル: なし";
+          fileHint.textContent = "選択中: なし";
           return;
         }
         if (!isHTMLFile(file)) {
-          error.textContent = "`.html` または `.htm` ファイルを選択してください。";
+          error.textContent = ".html または .htm ファイルを選択してください。";
           return;
         }
         selectedFile = file;
-        fileHint.textContent = `選択中ファイル: ${file.name}`;
+        fileHint.textContent = `選択中: ${file.name}`;
         error.textContent = "";
       }
 
       function formatDateTime(raw) {
-        const date = new Date(raw);
-        if (Number.isNaN(date.getTime())) {
-          return raw;
-        }
-        return date.toLocaleString("ja-JP");
+        const d = new Date(raw);
+        return isNaN(d) ? raw : d.toLocaleString("ja-JP");
       }
 
       function renderHistoryItem(item) {
-        const li = document.createElement("li");
-
+        const li   = document.createElement("li");
         const link = document.createElement("a");
-        link.href = item.url;
+        link.href   = item.url;
         link.target = "_blank";
-        link.rel = "noreferrer noopener";
+        link.rel    = "noreferrer noopener";
         link.textContent = item.title || item.url;
-
         const meta = document.createElement("span");
-        meta.className = "meta";
+        meta.className   = "meta";
         meta.textContent = formatDateTime(item.created_at);
-
         li.appendChild(link);
         li.appendChild(meta);
         return li;
       }
 
-      function renderEmptyHistory() {
-        historyList.innerHTML = "";
-        const li = document.createElement("li");
-        li.textContent = "まだ履歴がありません。";
-        historyList.appendChild(li);
-      }
-
       async function loadHistory() {
         try {
           const res = await fetch("/history");
-          if (!res.ok) {
-            throw new Error("履歴の取得に失敗しました。");
-          }
+          if (!res.ok) throw new Error("履歴の取得に失敗しました。");
           const items = await res.json();
           historyList.innerHTML = "";
-          if (!Array.isArray(items) || items.length === 0) {
-            renderEmptyHistory();
+          if (!Array.isArray(items) || !items.length) {
+            const li = document.createElement("li");
+            li.textContent = "まだ履歴がありません。";
+            historyList.appendChild(li);
             return;
           }
-          items.forEach((item) => {
-            historyList.appendChild(renderHistoryItem(item));
-          });
+          items.forEach(item => historyList.appendChild(renderHistoryItem(item)));
         } catch (e) {
           historyList.innerHTML = "";
           const li = document.createElement("li");
@@ -154,95 +164,73 @@
         }
       }
 
-      htmlFileInput.addEventListener("change", () => {
-        const file = htmlFileInput.files && htmlFileInput.files[0];
-        setSelectedFile(file || null);
+      htmlFileInput.addEventListener("change", () => setSelectedFile(htmlFileInput.files?.[0] ?? null));
+      filePickButton.addEventListener("click", () => htmlFileInput.click());
+      dropZone.addEventListener("click",  () => htmlFileInput.click());
+      dropZone.addEventListener("keydown", e => {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); htmlFileInput.click(); }
       });
-
-      filePickButton.addEventListener("click", () => {
-        htmlFileInput.click();
+      dropZone.addEventListener("dragenter", e => { e.preventDefault(); dropZone.classList.add("active"); });
+      dropZone.addEventListener("dragover",  e => e.preventDefault());
+      dropZone.addEventListener("dragleave", e => {
+        if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove("active");
       });
-
-      dropZone.addEventListener("click", () => {
-        htmlFileInput.click();
-      });
-
-      dropZone.addEventListener("keydown", (event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          htmlFileInput.click();
-        }
-      });
-
-      dropZone.addEventListener("dragenter", (event) => {
-        event.preventDefault();
-        dropZone.classList.add("active");
-      });
-
-      dropZone.addEventListener("dragover", (event) => {
-        event.preventDefault();
-      });
-
-      dropZone.addEventListener("dragleave", (event) => {
-        if (!dropZone.contains(event.relatedTarget)) {
-          dropZone.classList.remove("active");
-        }
-      });
-
-      dropZone.addEventListener("drop", (event) => {
-        event.preventDefault();
+      dropZone.addEventListener("drop", e => {
+        e.preventDefault();
         dropZone.classList.remove("active");
-        const file = event.dataTransfer && event.dataTransfer.files && event.dataTransfer.files[0];
-        setSelectedFile(file || null);
+        setSelectedFile(e.dataTransfer?.files?.[0] ?? null);
       });
 
       uploadButton.addEventListener("click", async () => {
-        const html = htmlInput.value.trim();
-        const file = selectedFile;
+        const htmlText = htmlInput.value.trim();
+        const file     = selectedFile;
         result.style.display = "none";
-        error.textContent = "";
+        error.textContent    = "";
 
-        if (!html && !file) {
-          error.textContent = "HTMLを入力するか、HTMLファイルを選択してください。";
+        if (!htmlText && !file) {
+          error.textContent = "HTMLを入力するか、ファイルを選択してください。";
           return;
         }
 
-        uploadButton.disabled = true;
-        uploadButton.textContent = "送信中...";
+        uploadButton.disabled    = true;
+        uploadButton.textContent = "送信中…";
 
         try {
           let res;
           if (file) {
-            const formData = new FormData();
-            formData.append("file", file);
-            res = await fetch("/upload", {
-              method: "POST",
-              body: formData,
-            });
+            const fd = new FormData();
+            fd.append("file", file);
+            res = await fetch("/upload", { method: "POST", body: fd });
           } else {
             res = await fetch("/upload", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ html }),
+              body: JSON.stringify({ html: htmlText }),
             });
           }
-
-          if (!res.ok) {
-            const text = await res.text();
-            throw new Error(text || "アップロードに失敗しました。");
-          }
-
+          if (!res.ok) throw new Error((await res.text()) || "アップロードに失敗しました。");
           const data = await res.json();
-          const absoluteURL = new URL(data.url, window.location.origin).toString();
-          resultLink.href = absoluteURL;
-          resultLink.textContent = absoluteURL;
-          result.style.display = "block";
+          const url  = new URL(data.url, window.location.origin).toString();
+          resultLink.href        = url;
+          resultLink.textContent = url;
+          result.style.display   = "block";
+          copyButton.textContent = "Copy URL";
           await loadHistory();
         } catch (e) {
           error.textContent = e.message || "アップロードに失敗しました。";
         } finally {
-          uploadButton.disabled = false;
-          uploadButton.textContent = "アップロード";
+          uploadButton.disabled    = false;
+          uploadButton.textContent = "共有リンクを発行する";
+        }
+      });
+
+      copyButton.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(resultLink.href);
+          copyButton.textContent = "Copied!";
+          setTimeout(() => { copyButton.textContent = "Copy URL"; }, 2000);
+        } catch {
+          copyButton.textContent = "Failed";
         }
       });
 
