@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ja" data-theme="light">
+<html lang="ja" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -7,11 +7,18 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet" />
+    <link rel="icon" type="image/svg+xml" href="/web/favicon.svg" />
     <link rel="stylesheet" href="/web/index.css" />
   </head>
   <body>
-    <main>
-      <section class="app-card">
+    <!-- Space canvas — activated only in SW Easter egg mode -->
+    <canvas id="space-canvas"></canvas>
+
+    <main id="mainWrapper">
+      <section class="app-card" id="appCard">
+        <!-- Drag handle -->
+        <div class="drag-handle" id="dragHandle"></div>
+
         <button class="theme-toggle" id="themeToggle" type="button" aria-label="テーマ切り替え">●</button>
 
         <div class="title-row">
@@ -25,15 +32,8 @@
         <div class="upload-mode">
           <label for="htmlFileInput">HTMLファイル (.html / .htm)</label>
           <div class="file-picker-row">
-            <button id="filePickButton" class="file-picker-button" type="button">
-              ファイルをえらぶ
-            </button>
-            <input
-              id="htmlFileInput"
-              class="file-picker-input"
-              type="file"
-              accept=".html,.htm,text/html"
-            />
+            <button id="filePickButton" class="file-picker-button" type="button">ファイルをえらぶ</button>
+            <input id="htmlFileInput" class="file-picker-input" type="file" accept=".html,.htm,text/html" />
           </div>
           <div id="dropZone" class="drop-zone" role="button" tabindex="0">
             <span class="drop-main">ドラッグ &amp; ドロップ</span>
@@ -73,168 +73,565 @@
       </section>
     </main>
 
+    <!-- Easter egg toast -->
+    <div id="sw-toast"></div>
+    <!-- Warp flash overlay -->
+    <div id="warp-flash"></div>
+
     <script>
-      // ----- theme -----
-      const html = document.documentElement;
-      const themeToggle = document.getElementById("themeToggle");
-      const saved = localStorage.getItem("peta-theme") || "light";
-      html.dataset.theme = saved;
-      themeToggle.textContent = saved === "dark" ? "○" : "●";
+    // ===== THEME =====
+    const ICONS   = { light: '○', dark: '●', sw: '★' };
+    const html    = document.documentElement;
+    const toggle  = document.getElementById('themeToggle');
 
-      themeToggle.addEventListener("click", () => {
-        const next = html.dataset.theme === "light" ? "dark" : "light";
-        html.dataset.theme = next;
-        localStorage.setItem("peta-theme", next);
-        themeToggle.textContent = next === "dark" ? "○" : "●";
-      });
+    // SW unlock state persists across sessions
+    const swUnlocked = localStorage.getItem('peta-sw') === '1';
+    let THEMES = swUnlocked ? ['light', 'dark', 'sw'] : ['light', 'dark'];
 
-      // ----- upload -----
-      const htmlInput    = document.getElementById("htmlInput");
-      const filePickButton = document.getElementById("filePickButton");
-      const htmlFileInput  = document.getElementById("htmlFileInput");
-      const dropZone     = document.getElementById("dropZone");
-      const fileHint     = document.getElementById("fileHint");
-      const uploadButton = document.getElementById("uploadButton");
-      const result       = document.getElementById("result");
-      const resultLink   = document.getElementById("resultLink");
-      const copyButton   = document.getElementById("copyButton");
-      const error        = document.getElementById("error");
-      const historyList  = document.getElementById("historyList");
-      let selectedFile   = null;
+    function applyTheme(t, save = true) {
+      const prev = html.dataset.theme;
+      html.dataset.theme = t;
+      if (save) localStorage.setItem('peta-theme', t);
+      toggle.textContent  = ICONS[t] || '●';
+      toggle.title = { light: 'Light', dark: 'Dark', sw: 'A long time ago...' }[t] || t;
+      if (t === 'sw')         { if (typeof startBattle === 'function') startBattle(); }
+      else if (prev === 'sw') { if (typeof stopBattle  === 'function') stopBattle();  }
+    }
 
-      function isHTMLFile(file) {
-        if (!file?.name) return false;
-        const n = file.name.toLowerCase();
-        return n.endsWith(".html") || n.endsWith(".htm");
-      }
+    const saved = localStorage.getItem('peta-theme') || 'dark';
+    applyTheme(THEMES.includes(saved) ? saved : 'dark', false);
 
-      function setSelectedFile(file) {
-        if (!file) {
-          selectedFile = null;
-          fileHint.textContent = "選択中: なし";
-          return;
+    toggle.addEventListener('click', () => {
+      const next = THEMES[(THEMES.indexOf(html.dataset.theme) + 1) % THEMES.length];
+      applyTheme(next);
+    });
+
+    // ===== KONAMI CODE Easter egg =====
+    // ↑↑↓↓←→←→ba
+    const KONAMI = ['ArrowUp','ArrowUp','ArrowDown','ArrowDown','ArrowLeft','ArrowRight','ArrowLeft','ArrowRight','b','a'];
+    let ki = 0;
+    document.addEventListener('keydown', e => {
+      const inInput = ['INPUT','TEXTAREA'].includes(document.activeElement?.tagName);
+      if (inInput) { ki = 0; return; }
+      ki = e.key === KONAMI[ki] ? ki + 1 : (e.key === KONAMI[0] ? 1 : 0);
+      if (ki === KONAMI.length) {
+        ki = 0;
+        if (!THEMES.includes('sw')) {
+          THEMES = ['light', 'dark', 'sw'];
+          localStorage.setItem('peta-sw', '1');
+          showToast('— Easter egg unlocked —');
+          applyTheme('sw');
+        } else {
+          THEMES = ['light', 'dark'];
+          localStorage.removeItem('peta-sw');
+          localStorage.removeItem('peta-theme');
+          showToast('— Galaxy far, far away... —');
+          applyTheme('dark');
         }
-        if (!isHTMLFile(file)) {
-          error.textContent = ".html または .htm ファイルを選択してください。";
-          return;
+      }
+    });
+
+    function showToast(msg) {
+      const t = document.getElementById('sw-toast');
+      t.textContent = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    // ===== DRAGGABLE PANEL =====
+    const card   = document.getElementById('appCard');
+    const handle = document.getElementById('dragHandle');
+    const mainEl = document.getElementById('mainWrapper');
+    let dragging = false, ox = 0, oy = 0;
+
+    handle.addEventListener('mousedown', onDragStart);
+    handle.addEventListener('touchstart', onDragStart, { passive: false });
+    document.addEventListener('mousemove', onDragMove);
+    document.addEventListener('touchmove', onDragMove, { passive: false });
+    document.addEventListener('mouseup', onDragEnd);
+    document.addEventListener('touchend', onDragEnd);
+
+    function clientXY(e) {
+      return e.touches ? [e.touches[0].clientX, e.touches[0].clientY] : [e.clientX, e.clientY];
+    }
+
+    function onDragStart(e) {
+      e.preventDefault();
+      if (!card._fixed) {
+        const r = card.getBoundingClientRect();
+        mainEl.style.minHeight = r.height + 'px';
+        card.style.cssText = `
+          position: fixed;
+          left: ${r.left}px;
+          top: ${r.top}px;
+          width: ${r.width}px;
+          max-width: none;
+          margin: 0;
+          z-index: 10;
+          overflow-y: auto;
+          max-height: 90vh;
+        `;
+        card._fixed = true;
+      }
+      const [cx, cy] = clientXY(e);
+      ox = cx - parseFloat(card.style.left);
+      oy = cy - parseFloat(card.style.top);
+      dragging = true;
+      handle.classList.add('dragging');
+    }
+
+    function onDragMove(e) {
+      if (!dragging) return;
+      e.preventDefault();
+      const [cx, cy] = clientXY(e);
+      let left = cx - ox;
+      let top  = cy - oy;
+      // clamp: keep at least 80px on-screen
+      const w = card.offsetWidth, h = card.offsetHeight;
+      left = Math.max(80 - w, Math.min(innerWidth  - 80, left));
+      top  = Math.max(0,      Math.min(innerHeight - 80, top));
+      card.style.left = left + 'px';
+      card.style.top  = top  + 'px';
+    }
+
+    function onDragEnd() {
+      if (!dragging) return;
+      dragging = false;
+      handle.classList.remove('dragging');
+    }
+
+    // ===== UPLOAD =====
+    const htmlInput    = document.getElementById('htmlInput');
+    const filePickBtn  = document.getElementById('filePickButton');
+    const htmlFileInput= document.getElementById('htmlFileInput');
+    const dropZone     = document.getElementById('dropZone');
+    const fileHint     = document.getElementById('fileHint');
+    const uploadButton = document.getElementById('uploadButton');
+    const result       = document.getElementById('result');
+    const resultLink   = document.getElementById('resultLink');
+    const copyButton   = document.getElementById('copyButton');
+    const error        = document.getElementById('error');
+    const historyList  = document.getElementById('historyList');
+    let selectedFile   = null;
+
+    function isHTMLFile(f) { return f?.name && /\.(html?|htm)$/i.test(f.name); }
+
+    function setSelectedFile(f) {
+      if (!f) { selectedFile = null; fileHint.textContent = '選択中: なし'; return; }
+      if (!isHTMLFile(f)) { error.textContent = '.html または .htm ファイルを選択してください。'; return; }
+      selectedFile = f; fileHint.textContent = `選択中: ${f.name}`; error.textContent = '';
+    }
+
+    function formatDateTime(raw) { const d = new Date(raw); return isNaN(d) ? raw : d.toLocaleString('ja-JP'); }
+
+    function renderHistoryItem(item) {
+      const li = document.createElement('li');
+      const a = document.createElement('a');
+      a.href = item.url; a.target = '_blank'; a.rel = 'noreferrer noopener';
+      a.textContent = item.title || item.url;
+      const meta = document.createElement('span'); meta.className = 'meta'; meta.textContent = formatDateTime(item.created_at);
+      li.appendChild(a); li.appendChild(meta); return li;
+    }
+
+    async function loadHistory() {
+      try {
+        const res = await fetch('/history');
+        if (!res.ok) throw new Error('履歴の取得に失敗しました。');
+        const items = await res.json();
+        historyList.innerHTML = '';
+        if (!Array.isArray(items) || !items.length) {
+          const li = document.createElement('li'); li.textContent = 'まだ履歴がありません。'; historyList.appendChild(li); return;
         }
-        selectedFile = file;
-        fileHint.textContent = `選択中: ${file.name}`;
-        error.textContent = "";
+        items.forEach(item => historyList.appendChild(renderHistoryItem(item)));
+      } catch (e) { historyList.innerHTML = ''; const li = document.createElement('li'); li.textContent = e.message; historyList.appendChild(li); }
+    }
+
+    htmlFileInput.addEventListener('change', () => setSelectedFile(htmlFileInput.files?.[0] ?? null));
+    filePickBtn.addEventListener('click', () => htmlFileInput.click());
+    dropZone.addEventListener('click', () => htmlFileInput.click());
+    dropZone.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' '){e.preventDefault();htmlFileInput.click();} });
+    dropZone.addEventListener('dragenter', e => { e.preventDefault(); dropZone.classList.add('active'); });
+    dropZone.addEventListener('dragover', e => e.preventDefault());
+    dropZone.addEventListener('dragleave', e => { if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove('active'); });
+    dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('active'); setSelectedFile(e.dataTransfer?.files?.[0]??null); });
+
+    uploadButton.addEventListener('click', async () => {
+      const htmlText = htmlInput.value.trim();
+      const file = selectedFile;
+      result.style.display = 'none'; error.textContent = '';
+      if (!htmlText && !file) { error.textContent = 'HTMLを入力するか、ファイルを選択してください。'; return; }
+      uploadButton.disabled = true; uploadButton.textContent = '送信中…';
+      try {
+        let res;
+        if (file) { const fd = new FormData(); fd.append('file', file); res = await fetch('/upload', { method:'POST', body:fd }); }
+        else { res = await fetch('/upload', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({html:htmlText}) }); }
+        if (!res.ok) throw new Error((await res.text()) || 'アップロードに失敗しました。');
+        const data = await res.json();
+        const url = new URL(data.url, window.location.origin).toString();
+        resultLink.href = url; resultLink.textContent = url;
+        result.style.display = 'block'; copyButton.textContent = 'Copy URL';
+        await loadHistory();
+      } catch(e) { error.textContent = e.message || 'アップロードに失敗しました。'; }
+      finally { uploadButton.disabled = false; uploadButton.textContent = '共有リンクを発行する'; }
+    });
+
+    copyButton.addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(resultLink.href); copyButton.textContent = 'Copied!'; setTimeout(()=>{copyButton.textContent='Copy URL';},2000); }
+      catch { copyButton.textContent = 'Failed'; }
+    });
+
+    loadHistory();
+    </script>
+
+    <!-- Three.js — only used for SW Easter egg -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+    <script>
+    // ===== SPACE BATTLE (SW Easter egg) =====
+    let battleReady = false, battleRunning = false, battleTick = null;
+    const spaceCanvas = document.getElementById('space-canvas');
+
+    function startBattle() {
+      if (!battleReady) initBattle();
+      battleRunning = true;
+      if (battleTick) battleTick();
+    }
+    function stopBattle() { battleRunning = false; }
+
+    function initBattle() {
+      if (typeof THREE === 'undefined' || battleReady) return;
+      battleReady = true;
+
+      const renderer = new THREE.WebGLRenderer({ canvas: spaceCanvas, antialias: true });
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+      renderer.setSize(innerWidth, innerHeight);
+      renderer.setClearColor(0x010c1a);
+
+      const scene = new THREE.Scene();
+      scene.fog = new THREE.FogExp2(0x000c1a, 0.0015);
+      const camera = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 1600);
+
+      // Brighter lighting
+      scene.add(new THREE.AmbientLight(0x334466, 1.4));
+      const sun = new THREE.DirectionalLight(0xffeedd, 2.2); sun.position.set(90, 50, 30); scene.add(sun);
+      const fill = new THREE.DirectionalLight(0x3355bb, 0.8); fill.position.set(-60, -20, -90); scene.add(fill);
+      const rim  = new THREE.DirectionalLight(0x112244, 0.55); rim.position.set(0, -80, 50); scene.add(rim);
+
+      // Stars — keep ref for warp animation
+      let starMat;
+      (() => {
+        const N = 6000, pos = new Float32Array(N * 3);
+        for (let i = 0; i < N * 3; i++) pos[i] = (Math.random() - 0.5) * 1800;
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+        starMat = new THREE.PointsMaterial({ color: 0xffffff, size: 0.9 });
+        scene.add(new THREE.Points(geo, starMat));
+      })();
+
+      // Planet
+      const planet = new THREE.Mesh(new THREE.SphereGeometry(38,32,24), new THREE.MeshLambertMaterial({color:0xc08848}));
+      planet.position.set(220,-70,-380); scene.add(planet);
+      scene.add(new THREE.Mesh(new THREE.SphereGeometry(500,16,16), new THREE.MeshBasicMaterial({color:0x0a1a3a,side:THREE.BackSide,transparent:true,opacity:0.7})));
+
+      // Ship materials — brighter
+      const M = {
+        white:  new THREE.MeshLambertMaterial({ color: 0xeeeae4 }),
+        red:    new THREE.MeshLambertMaterial({ color: 0xdd2222 }),
+        dark:   new THREE.MeshLambertMaterial({ color: 0x282422 }),
+        eng:    new THREE.MeshLambertMaterial({ color: 0x7799ff, emissive: new THREE.Color(0x334499) }),
+        tieGrn: new THREE.MeshLambertMaterial({ color: 0x5c7a5c }),
+        tieWng: new THREE.MeshLambertMaterial({ color: 0x3a4e3a }),
+        tieEye: new THREE.MeshLambertMaterial({ color: 0x55ee55, emissive: new THREE.Color(0x337733) }),
+      };
+      const bx = (w,h,d,m) => new THREE.Mesh(new THREE.BoxGeometry(w,h,d), m);
+
+      function buildXWing() {
+        const g = new THREE.Group();
+        g.add(bx(0.38,0.38,2.8,M.white));
+        const nose = bx(0.22,0.22,0.55,M.dark); nose.position.z=1.68; g.add(nose);
+        [[0.7,0.7],[0.7,-0.7],[-0.7,0.7],[-0.7,-0.7]].forEach(([x,y]) => {
+          const w=bx(0.06,1.2,1.4,M.white); w.position.set(x*0.52,y*0.52,0.15); w.rotation.z=Math.atan2(y,x)-Math.PI/2; g.add(w);
+          const s=bx(0.07,0.13,1.38,M.red); s.position.copy(w.position); s.rotation.copy(w.rotation); g.add(s);
+          const c=bx(0.09,0.09,0.65,M.dark); c.position.set(x*1.08,y*1.08,-0.95); g.add(c);
+        });
+        const eng=new THREE.Mesh(new THREE.CylinderGeometry(0.14,0.20,0.28,8),M.eng); eng.rotation.x=Math.PI/2; eng.position.z=-1.52; g.add(eng);
+        const el=new THREE.PointLight(0x5577ff,1.0,6); el.position.z=-1.8; g.add(el);
+        return g;
+      }
+      function buildTIE() {
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(new THREE.SphereGeometry(0.48,10,8),M.tieGrn));
+        const eye=new THREE.Mesh(new THREE.SphereGeometry(0.32,8,6),M.tieEye); eye.position.z=0.28; eye.scale.z=0.22; g.add(eye);
+        const el=new THREE.PointLight(0x44ff44,0.7,5); el.position.z=0.5; g.add(el);
+        [-1,1].forEach(s => {
+          const arm=bx(1.0,0.10,0.10,M.tieGrn); arm.position.x=s*0.8; g.add(arm);
+          const pnl=bx(0.07,2.2,1.85,M.tieWng); pnl.position.x=s*1.56; g.add(pnl);
+          for (let r=-0.55;r<=0.55;r+=0.37) { const ln=bx(0.08,0.05,1.85,M.dark); ln.position.set(s*1.56,r,0); g.add(ln); }
+        });
+        return g;
       }
 
-      function formatDateTime(raw) {
-        const d = new Date(raw);
-        return isNaN(d) ? raw : d.toLocaleString("ja-JP");
+      // ===== WARP STREAKS =====
+      const warpLines = (() => {
+        const count = 500, pos = new Float32Array(count * 6);
+        for (let i = 0; i < count; i++) {
+          const theta=Math.random()*Math.PI*2, phi=Math.acos(2*Math.random()-1);
+          const r0=25+Math.random()*70, len=10+Math.random()*28;
+          const dx=Math.sin(phi)*Math.cos(theta), dy=Math.sin(phi)*Math.sin(theta), dz=Math.cos(phi);
+          const j=i*6;
+          pos[j]=dx*r0; pos[j+1]=dy*r0; pos[j+2]=dz*r0;
+          pos[j+3]=dx*(r0+len); pos[j+4]=dy*(r0+len); pos[j+5]=dz*(r0+len);
+        }
+        const geo=new THREE.BufferGeometry();
+        geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
+        const mat=new THREE.LineBasicMaterial({color:0xddeeff,transparent:true,opacity:0,blending:THREE.AdditiveBlending});
+        const mesh=new THREE.LineSegments(geo,mat); mesh.visible=false; scene.add(mesh);
+        return mesh;
+      })();
+
+      const warpFlash = document.getElementById('warp-flash');
+      let warpPhase = 0, warpT = 0, nextWarp = 30 + Math.random() * 30;
+
+      // ===== DEATH STAR =====
+      const DISH_DIR = new THREE.Vector3(0.52, 0.60, 0.32).normalize();
+
+      function buildDeathStar() {
+        const g = new THREE.Group();
+        g.add(new THREE.Mesh(new THREE.SphereGeometry(18,40,30), new THREE.MeshLambertMaterial({color:0x5a5e66})));
+        g.add(new THREE.Mesh(new THREE.TorusGeometry(18.25,0.5,8,80), new THREE.MeshLambertMaterial({color:0x36393f})));
+        for (let i=0;i<8;i++) {
+          const band=new THREE.Mesh(new THREE.TorusGeometry(18.08,0.14,6,64), new THREE.MeshLambertMaterial({color:i%2===0?0x484b52:0x3c3f45}));
+          band.rotation.z=(i-3.5)*0.28; g.add(band);
+        }
+        const dish=new THREE.Mesh(new THREE.SphereGeometry(5.5,24,20), new THREE.MeshLambertMaterial({color:0x20222a}));
+        dish.position.copy(DISH_DIR).multiplyScalar(16.5);
+        dish.lookAt(DISH_DIR.clone().multiplyScalar(60)); dish.scale.z=0.18; g.add(dish);
+        const dishRim=new THREE.Mesh(new THREE.TorusGeometry(5.3,0.35,8,32), new THREE.MeshLambertMaterial({color:0x444850}));
+        dishRim.position.copy(DISH_DIR).multiplyScalar(16.5);
+        dishRim.lookAt(DISH_DIR.clone().multiplyScalar(60)); g.add(dishRim);
+        const glow=new THREE.PointLight(0x00ff88,0,50);
+        glow.position.copy(DISH_DIR).multiplyScalar(20); g.add(glow);
+        g.userData.glow = glow;
+        g.visible=false; scene.add(g); return g;
       }
 
-      function renderHistoryItem(item) {
-        const li   = document.createElement("li");
-        const link = document.createElement("a");
-        link.href   = item.url;
-        link.target = "_blank";
-        link.rel    = "noreferrer noopener";
-        link.textContent = item.title || item.url;
-        const meta = document.createElement("span");
-        meta.className   = "meta";
-        meta.textContent = formatDateTime(item.created_at);
-        li.appendChild(link);
-        li.appendChild(meta);
-        return li;
+      const ds = { group:null, active:false, t:0, nextAppear:20+Math.random()*30, fireCooldown:10, beamMesh:null, beamLife:0 };
+
+      function dsFire() {
+        if (ds.beamMesh) { scene.remove(ds.beamMesh); ds.beamMesh=null; }
+        const worldDir=DISH_DIR.clone().applyQuaternion(ds.group.quaternion);
+        const worldPos=ds.group.position.clone().add(DISH_DIR.clone().applyQuaternion(ds.group.quaternion).multiplyScalar(18));
+        const beamLen=300;
+        const geo=new THREE.CylinderGeometry(2.2,0.4,beamLen,16);
+        const mat=new THREE.MeshBasicMaterial({color:0x00ff88,transparent:true,opacity:1.0,blending:THREE.AdditiveBlending});
+        ds.beamMesh=new THREE.Mesh(geo,mat);
+        ds.beamMesh.position.copy(worldPos).add(worldDir.clone().multiplyScalar(beamLen/2));
+        ds.beamMesh.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),worldDir);
+        scene.add(ds.beamMesh); ds.beamLife=1.8; ds.group.userData.glow.intensity=4;
       }
 
-      async function loadHistory() {
-        try {
-          const res = await fetch("/history");
-          if (!res.ok) throw new Error("履歴の取得に失敗しました。");
-          const items = await res.json();
-          historyList.innerHTML = "";
-          if (!Array.isArray(items) || !items.length) {
-            const li = document.createElement("li");
-            li.textContent = "まだ履歴がありません。";
-            historyList.appendChild(li);
-            return;
+      // ===== PLAYER BEAM =====
+      const raycaster = new THREE.Raycaster();
+      const playerBeams = [];
+      const playerBeamMat = new THREE.LineBasicMaterial({ color: 0xffcc00, transparent: true, blending: THREE.AdditiveBlending });
+
+      function onPlayerShoot(e) {
+        if (!battleRunning) return;
+        const rect = spaceCanvas.getBoundingClientRect();
+        const cx = e.touches ? e.changedTouches[0].clientX : e.clientX;
+        const cy = e.touches ? e.changedTouches[0].clientY : e.clientY;
+        const ndx = ((cx - rect.left) / rect.width)  * 2 - 1;
+        const ndy = -((cy - rect.top)  / rect.height) * 2 + 1;
+        raycaster.setFromCamera(new THREE.Vector2(ndx, ndy), camera);
+        const ray = raycaster.ray;
+
+        // Hit-test: closest TIE fighter within beam tolerance
+        let hitShip = null, minD = 5.5;
+        for (const s of ships) {
+          if (!s.alive || s.type !== 'tie') continue;
+          const d = ray.distanceToPoint(s.mesh.position);
+          if (d < minD) { minD = d; hitShip = s; }
+        }
+
+        // Beam — gun offset from camera so the beam is NOT coaxial with the view ray.
+        // A purely on-axis beam projects to a single point in perspective (looks like a dot).
+        // Offset by camera's right/up vectors to give it visible screen-space extent.
+        const camRight = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+        const camUp    = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+        const gunPos   = camera.position.clone()
+          .addScaledVector(camRight,  2.5)
+          .addScaledVector(camUp,    -1.8)
+          .addScaledVector(ray.direction, 10);
+        const tgtDist = hitShip ? ray.origin.distanceTo(hitShip.mesh.position) + 2 : 200;
+        const tgtPos  = ray.origin.clone().addScaledVector(ray.direction, tgtDist);
+        const start = gunPos;
+        const end   = tgtPos;
+        const geo   = new THREE.BufferGeometry().setFromPoints([start, end]);
+        const mat   = playerBeamMat.clone();
+        const mesh  = new THREE.Line(geo, mat);
+        scene.add(mesh);
+        playerBeams.push({ mesh, geo, mat, ttl: 0.35, maxTtl: 0.35 });
+
+        if (hitShip) {
+          hitShip.hp = 0; hitShip.alive = false; hitShip.mesh.visible = false;
+          hitShip.respawnIn = 3 + Math.random() * 2.5;
+          explode(hitShip.mesh.position.clone(), false);
+        }
+      }
+
+      spaceCanvas.addEventListener('click',     onPlayerShoot);
+      spaceCanvas.addEventListener('touchend',  onPlayerShoot);
+
+      // ===== SHIPS & COMBAT =====
+      const ARENA = 58;
+      const lMatR=new THREE.LineBasicMaterial({color:0x00ff55,blending:THREE.AdditiveBlending,transparent:true});
+      const lMatE=new THREE.LineBasicMaterial({color:0xff2200,blending:THREE.AdditiveBlending,transparent:true});
+      const lasers=[],explosions=[],ships=[];
+      const _fwd=new THREE.Vector3(0,0,1),_q=new THREE.Quaternion(),_v=new THREE.Vector3();
+
+      function spawnShip(type,side) {
+        const mesh=type==='xwing'?buildXWing():buildTIE();
+        const sz=side==='rebel'?-(ARENA*0.85):(ARENA*0.85);
+        mesh.position.set((Math.random()-0.5)*ARENA*1.1,(Math.random()-0.5)*ARENA*0.35,sz+(Math.random()-0.5)*18);
+        scene.add(mesh);
+        return {mesh,type,side,hp:type==='xwing'?3:2,maxHp:type==='xwing'?3:2,
+          vel:new THREE.Vector3(0,0,side==='rebel'?13:-13),cooldown:Math.random()*2,alive:true,respawnIn:0};
+      }
+      for (let i=0;i<5;i++) ships.push(spawnShip('xwing','rebel'));
+      for (let i=0;i<8;i++) ships.push(spawnShip('tie','empire'));
+
+      function fireLaser(pos,dir,side) {
+        const geo=new THREE.BufferGeometry();
+        geo.setAttribute('position',new THREE.BufferAttribute(new Float32Array([0,0,0,0,0,-2.8]),3));
+        const mesh=new THREE.Line(geo,side==='rebel'?lMatR:lMatE);
+        mesh.position.copy(pos);
+        _q.setFromUnitVectors(new THREE.Vector3(0,0,-1),dir.clone().normalize()); mesh.quaternion.copy(_q);
+        scene.add(mesh);
+        lasers.push({mesh,geo,dir:dir.clone().normalize(),ttl:0.42,side});
+      }
+
+      function explode(pos,isRebel) {
+        const N=28,arr=new Float32Array(N*3),vels=[];
+        for (let i=0;i<N;i++) { arr[i*3]=pos.x;arr[i*3+1]=pos.y;arr[i*3+2]=pos.z; vels.push(new THREE.Vector3((Math.random()-0.5)*20,(Math.random()-0.5)*20,(Math.random()-0.5)*20)); }
+        const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.BufferAttribute(arr,3));
+        const mat=new THREE.PointsMaterial({color:isRebel?0xff8822:0x44ff66,size:0.9,transparent:true,blending:THREE.AdditiveBlending});
+        const pts=new THREE.Points(geo,mat); scene.add(pts);
+        explosions.push({pts,geo,mat,vels,ttl:0.9,maxTtl:0.9});
+      }
+
+      function nearestEnemy(ship) {
+        let best=null,bd=Infinity;
+        for (const s of ships) { if(!s.alive||s.side===ship.side)continue; const d=ship.mesh.position.distanceTo(s.mesh.position); if(d<bd){bd=d;best=s;} }
+        return best;
+      }
+
+      const clock=new THREE.Clock(); let t=0;
+      const maxSpd={xwing:17,tie:22},fireRate={xwing:0.72,tie:1.05};
+
+      battleTick = function tick() {
+        if (!battleRunning) return;
+        requestAnimationFrame(tick);
+        const dt=Math.min(clock.getDelta(),0.05); t+=dt;
+
+        // ===== WARP EFFECT =====
+        if (warpPhase===0 && t>nextWarp) {
+          warpPhase=1; warpT=0; warpLines.visible=true; warpLines.scale.setScalar(1);
+        }
+        if (warpPhase===1) {
+          warpT+=dt;
+          const p=Math.min(warpT/0.7,1);
+          warpLines.material.opacity=Math.min(p*2,1)*0.9;
+          warpLines.scale.setScalar(1+p*9);
+          starMat.size=0.9+p*38;
+          if (warpT>=0.7) { warpPhase=2; warpT=0; }
+        }
+        if (warpPhase===2) {
+          warpT+=dt;
+          if (warpFlash) warpFlash.style.opacity=warpT<0.12?String(warpT/0.12):String(Math.max(0,1-(warpT-0.12)/0.28));
+          starMat.size=0.9; warpLines.material.opacity=0; warpLines.visible=false; warpLines.scale.setScalar(1);
+          if (warpT>=0.4) { warpPhase=0; if (warpFlash) warpFlash.style.opacity='0'; nextWarp=t+38+Math.random()*42; }
+        }
+
+        // ===== DEATH STAR =====
+        if (!ds.active && t>ds.nextAppear) {
+          if (!ds.group) ds.group=buildDeathStar();
+          ds.group.position.set((Math.random()-0.5)*80,(Math.random()-0.5)*28-10,-110-Math.random()*90);
+          ds.group.rotation.set(Math.random()*Math.PI,Math.random()*Math.PI,0);
+          ds.group.visible=true; ds.active=true; ds.t=0; ds.fireCooldown=8+Math.random()*4;
+        }
+        if (ds.active) {
+          ds.t+=dt; ds.group.rotation.y+=0.055*dt;
+          ds.fireCooldown-=dt;
+          if (ds.fireCooldown<=0) { dsFire(); ds.fireCooldown=10+Math.random()*6; }
+          if (ds.beamMesh) {
+            ds.beamLife-=dt;
+            if (ds.beamLife<=0) { scene.remove(ds.beamMesh); ds.beamMesh=null; ds.group.userData.glow.intensity=0; }
+            else { ds.beamMesh.material.opacity=Math.max(0,ds.beamLife/1.8); ds.group.userData.glow.intensity=ds.beamLife*2.2; }
           }
-          items.forEach(item => historyList.appendChild(renderHistoryItem(item)));
-        } catch (e) {
-          historyList.innerHTML = "";
-          const li = document.createElement("li");
-          li.textContent = e.message || "履歴の取得に失敗しました。";
-          historyList.appendChild(li);
-        }
-      }
-
-      htmlFileInput.addEventListener("change", () => setSelectedFile(htmlFileInput.files?.[0] ?? null));
-      filePickButton.addEventListener("click", () => htmlFileInput.click());
-      dropZone.addEventListener("click",  () => htmlFileInput.click());
-      dropZone.addEventListener("keydown", e => {
-        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); htmlFileInput.click(); }
-      });
-      dropZone.addEventListener("dragenter", e => { e.preventDefault(); dropZone.classList.add("active"); });
-      dropZone.addEventListener("dragover",  e => e.preventDefault());
-      dropZone.addEventListener("dragleave", e => {
-        if (!dropZone.contains(e.relatedTarget)) dropZone.classList.remove("active");
-      });
-      dropZone.addEventListener("drop", e => {
-        e.preventDefault();
-        dropZone.classList.remove("active");
-        setSelectedFile(e.dataTransfer?.files?.[0] ?? null);
-      });
-
-      uploadButton.addEventListener("click", async () => {
-        const htmlText = htmlInput.value.trim();
-        const file     = selectedFile;
-        result.style.display = "none";
-        error.textContent    = "";
-
-        if (!htmlText && !file) {
-          error.textContent = "HTMLを入力するか、ファイルを選択してください。";
-          return;
-        }
-
-        uploadButton.disabled    = true;
-        uploadButton.textContent = "送信中…";
-
-        try {
-          let res;
-          if (file) {
-            const fd = new FormData();
-            fd.append("file", file);
-            res = await fetch("/upload", { method: "POST", body: fd });
-          } else {
-            res = await fetch("/upload", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ html: htmlText }),
-            });
+          if (ds.t>40) {
+            ds.group.visible=false; ds.active=false;
+            if (ds.beamMesh) { scene.remove(ds.beamMesh); ds.beamMesh=null; }
+            ds.group.userData.glow.intensity=0; ds.nextAppear=t+65+Math.random()*55;
           }
-          if (!res.ok) throw new Error((await res.text()) || "アップロードに失敗しました。");
-          const data = await res.json();
-          const url  = new URL(data.url, window.location.origin).toString();
-          resultLink.href        = url;
-          resultLink.textContent = url;
-          result.style.display   = "block";
-          copyButton.textContent = "Copy URL";
-          await loadHistory();
-        } catch (e) {
-          error.textContent = e.message || "アップロードに失敗しました。";
-        } finally {
-          uploadButton.disabled    = false;
-          uploadButton.textContent = "共有リンクを発行する";
         }
-      });
 
-      copyButton.addEventListener("click", async () => {
-        try {
-          await navigator.clipboard.writeText(resultLink.href);
-          copyButton.textContent = "Copied!";
-          setTimeout(() => { copyButton.textContent = "Copy URL"; }, 2000);
-        } catch {
-          copyButton.textContent = "Failed";
+        // ===== PLAYER BEAMS =====
+        for (let i = playerBeams.length - 1; i >= 0; i--) {
+          const b = playerBeams[i]; b.ttl -= dt;
+          if (b.ttl <= 0) { scene.remove(b.mesh); b.geo.dispose(); b.mat.dispose(); playerBeams.splice(i, 1); }
+          else { b.mat.opacity = b.ttl / b.maxTtl; }
         }
-      });
 
-      loadHistory();
+        // ===== SHIPS =====
+        for (const s of ships) {
+          if (!s.alive) {
+            s.respawnIn-=dt;
+            if (s.respawnIn<=0) { s.hp=s.maxHp;s.alive=true;s.mesh.visible=true; const sz=s.side==='rebel'?-(ARENA*0.9):(ARENA*0.9); s.mesh.position.set((Math.random()-0.5)*ARENA*1.1,(Math.random()-0.5)*ARENA*0.35,sz); s.vel.set(0,0,s.side==='rebel'?13:-13); }
+            continue;
+          }
+          const tgt=nearestEnemy(s),MS=maxSpd[s.type];
+          if (tgt) {
+            _v.copy(tgt.mesh.position).sub(s.mesh.position);
+            const dist=_v.length(),spd=dist<10?-MS*0.5:dist<22?MS*0.6:MS;
+            s.vel.lerp(_v.normalize().multiplyScalar(spd),2.8*dt);
+            s.cooldown-=dt;
+            if (dist<40&&s.cooldown<=0) {
+              s.cooldown=fireRate[s.type]*(0.8+Math.random()*0.4);
+              const dir=_v.clone().add(new THREE.Vector3((Math.random()-0.5)*0.035,(Math.random()-0.5)*0.035,0));
+              fireLaser(s.mesh.position.clone().addScaledVector(dir.normalize(),2.2),dir,s.side);
+            }
+          } else { _v.set(0,0,0).sub(s.mesh.position).normalize().multiplyScalar(MS*0.45); s.vel.lerp(_v,0.6*dt); }
+          const p=s.mesh.position,bounds={x:ARENA*1.1,y:ARENA*0.42,z:ARENA*1.1};
+          for (const ax of ['x','y','z']) { if(p[ax]>bounds[ax])s.vel[ax]-=20*dt; if(p[ax]<-bounds[ax])s.vel[ax]+=20*dt; }
+          if(s.vel.length()>MS)s.vel.setLength(MS);
+          s.mesh.position.addScaledVector(s.vel,dt);
+          if(s.vel.lengthSq()>0.5){_q.setFromUnitVectors(_fwd,s.vel.clone().normalize());s.mesh.quaternion.slerp(_q,4.5*dt);}
+        }
+
+        for (let i=lasers.length-1;i>=0;i--) {
+          const l=lasers[i]; l.mesh.position.addScaledVector(l.dir,95*dt); l.ttl-=dt;
+          if(l.ttl<=0){scene.remove(l.mesh);l.geo.dispose();lasers.splice(i,1);continue;}
+          for(const s of ships){if(!s.alive||s.side===l.side)continue;if(l.mesh.position.distanceTo(s.mesh.position)<2.0){s.hp--;if(s.hp<=0){s.alive=false;s.mesh.visible=false;s.respawnIn=3+Math.random()*2.5;explode(s.mesh.position.clone(),s.type==='xwing');}l.ttl=0;break;}}
+        }
+
+        for (let i=explosions.length-1;i>=0;i--) {
+          const ex=explosions[i]; ex.ttl-=dt;
+          if(ex.ttl<=0){scene.remove(ex.pts);ex.geo.dispose();ex.mat.dispose();explosions.splice(i,1);continue;}
+          const arr=ex.pts.geometry.attributes.position.array;
+          ex.vels.forEach((v,j)=>{arr[j*3]+=v.x*dt;arr[j*3+1]+=v.y*dt;arr[j*3+2]+=v.z*dt;v.multiplyScalar(1-2.2*dt);});
+          ex.pts.geometry.attributes.position.needsUpdate=true; ex.mat.opacity=ex.ttl/ex.maxTtl;
+        }
+
+        const cr=88+Math.sin(t*0.11)*20,ca=t*0.065,ch=16+Math.sin(t*0.17)*24;
+        camera.position.set(Math.sin(ca)*cr,ch,Math.cos(ca)*cr);
+        camera.lookAt(0,0,0);
+        renderer.render(scene,camera);
+      };
+
+      window.addEventListener('resize',()=>{ renderer.setSize(innerWidth,innerHeight); camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); });
+    }
+
+    // SW theme may have been applied before this script loaded (e.g. saved in localStorage)
+    if (document.documentElement.dataset.theme === 'sw') startBattle();
     </script>
   </body>
 </html>
