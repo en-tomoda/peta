@@ -74,6 +74,7 @@ func main() {
 	mux.HandleFunc("GET /history", application.handleHistory)
 	mux.HandleFunc("GET /share/{id}", application.handleShare)
 	mux.HandleFunc("GET /content/{id}", application.handleContent)
+	mux.HandleFunc("DELETE /page/{id}", application.handleDelete)
 
 	addr := ":8080"
 	log.Printf("peta started at http://localhost%s", addr)
@@ -338,6 +339,26 @@ LIMIT ?
 		return nil, err
 	}
 	return items, nil
+}
+
+func (a *app) handleDelete(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		http.NotFound(w, r)
+		return
+	}
+	if err := a.deletePage(r.Context(), id); err != nil {
+		http.Error(w, "failed to delete page", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (a *app) deletePage(ctx context.Context, id string) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	_, err := a.db.ExecContext(ctx, `DELETE FROM pages WHERE id = ?`, id)
+	return err
 }
 
 func newID() (string, error) {

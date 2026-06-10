@@ -11,18 +11,48 @@
     <link rel="stylesheet" href="/web/share.css" />
   </head>
   <body>
-    <header class="preview-header">
-      <strong><a href="/">Peta</a></strong>
-      <span class="page-id">{{.ID}}</span>
+    <header class="preview-header" id="previewHeader">
+      <div class="header-left">
+        <a class="header-brand" href="/">Peta</a>
+        <span class="header-sep">/</span>
+        <span class="header-id">{{.ID}}</span>
+      </div>
+      <button class="header-toggle" id="headerToggle" type="button" title="ヘッダーを隠す">
+        <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M1 7L6 2L11 7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </button>
     </header>
+
+    <button class="header-tab" id="headerTab" type="button" title="ヘッダーを表示">
+      <svg width="12" height="8" viewBox="0 0 12 8" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M1 1L6 6L11 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </button>
+
     <iframe
       src="/content/{{.ID}}"
       sandbox="allow-scripts allow-forms"
       referrerpolicy="no-referrer"
     ></iframe>
+
     <script>
       const saved = localStorage.getItem("peta-theme") || "light";
       document.documentElement.dataset.theme = saved;
+
+      const body         = document.body;
+      const headerTab    = document.getElementById('headerTab');
+      const headerToggle = document.getElementById('headerToggle');
+      const HIDDEN_KEY   = 'peta-header-hidden';
+
+      function setHidden(hide, save) {
+        body.classList.toggle('header-hidden', hide);
+        if (save) localStorage.setItem(HIDDEN_KEY, hide ? '1' : '0');
+      }
+
+      setHidden(localStorage.getItem(HIDDEN_KEY) === '1', false);
+      headerToggle.addEventListener('click', () => setHidden(true,  true));
+      headerTab   .addEventListener('click', () => setHidden(false, true));
     </script>
   </body>
 </html>

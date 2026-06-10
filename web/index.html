@@ -230,7 +230,17 @@
       a.href = item.url; a.target = '_blank'; a.rel = 'noreferrer noopener';
       a.textContent = item.title || item.url;
       const meta = document.createElement('span'); meta.className = 'meta'; meta.textContent = formatDateTime(item.created_at);
-      li.appendChild(a); li.appendChild(meta); return li;
+      const del = document.createElement('button');
+      del.className = 'del-btn'; del.type = 'button'; del.textContent = '×'; del.title = '削除';
+      del.addEventListener('click', async () => {
+        if (!confirm(`削除しますか？\n${item.title || item.url}`)) return;
+        try {
+          const res = await fetch(`/page/${item.id}`, { method: 'DELETE' });
+          if (!res.ok) throw new Error();
+          li.remove();
+        } catch { error.textContent = '削除に失敗しました。'; }
+      });
+      li.appendChild(a); li.appendChild(meta); li.appendChild(del); return li;
     }
 
     async function loadHistory() {
