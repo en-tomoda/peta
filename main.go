@@ -97,7 +97,7 @@ func main() {
 	mux.HandleFunc("PATCH /page/{id}/folder", application.handleAssignFolder)
 	mux.HandleFunc("POST /history/reorder", application.handleReorder)
 
-	addr := ":8080"
+	addr := ":7382"
 	log.Printf("peta started at http://localhost%s", addr)
 	if err := http.ListenAndServe(addr, withLogging(mux)); err != nil {
 		log.Fatalf("server error: %v", err)

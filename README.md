@@ -34,7 +34,7 @@ go mod tidy
 go run .
 ```
 
-ブラウザで [http://localhost:8080](http://localhost:8080) を開き、HTMLをアップロードすると共有リンクが発行されます。
+ブラウザで [http://localhost:7382](http://localhost:7382) を開き、HTMLをアップロードすると共有リンクが発行されます。
 
 ## プレビュー表示の仕組み
 
@@ -156,6 +156,59 @@ peta/
 ├── data/
 │   └── .gitkeep
 └── README.md
+```
+
+## デプロイ（systemd）
+
+Goアプリの一般的な運用として、`systemd` で常駐化できます。
+
+### 1. ビルドと配置
+
+```bash
+cd /path/to/peta
+go build -o peta .
+
+sudo mkdir -p /opt/peta
+sudo cp peta /opt/peta/
+sudo cp -r web /opt/peta/
+sudo mkdir -p /opt/peta/data
+```
+
+### 2. serviceファイル作成
+
+`/etc/systemd/system/peta.service`
+
+```ini
+[Unit]
+Description=Peta Go App
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/peta
+ExecStart=/opt/peta/peta
+Restart=always
+RestartSec=3
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### 3. 起動・自動起動
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable peta
+sudo systemctl start peta
+sudo systemctl status peta
+```
+
+### 4. ログ確認
+
+```bash
+journalctl -u peta -f
 ```
 
 ## 運用メモ
