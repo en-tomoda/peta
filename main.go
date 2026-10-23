@@ -25,6 +25,8 @@ const (
 	legacyDBPath = "data/petabin.db"
 	maxHTMLLen   = 2 * 1024 * 1024
 	maxHistory   = 50
+
+	contentAgentTag = "\n<script src=\"/web/content-agent.js\" defer></script>\n"
 )
 
 type app struct {
@@ -320,10 +322,22 @@ func (a *app) handleContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if _, err := w.Write([]byte(html)); err != nil {
+	if _, err := w.Write([]byte(injectContentAgent(html))); err != nil {
 		http.Error(w, "failed to write html", http.StatusInternalServerError)
 		return
 	}
+}
+
+// injectContentAgent はコメントのピン座標を扱うスクリプトを配信時にだけ付け加える。
+// DBに保存されたHTMLは書き換えない。
+func injectContentAgent(html string) string {
+	lower := strings.ToLower(html)
+	for _, closing := range []string{"</body>", "</html>"} {
+		if i := strings.LastIndex(lower, closing); i >= 0 {
+			return html[:i] + contentAgentTag + html[i:]
+		}
+	}
+	return html + contentAgentTag
 }
 
 func (a *app) insertPage(ctx context.Context, id, title, html string) error {
