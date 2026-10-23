@@ -96,6 +96,12 @@ func main() {
 	mux.HandleFunc("DELETE /folder/{id}", application.handleDeleteFolder)
 	mux.HandleFunc("PATCH /page/{id}/folder", application.handleAssignFolder)
 	mux.HandleFunc("POST /history/reorder", application.handleReorder)
+	mux.HandleFunc("GET /page/{id}/comments", application.handleGetComments)
+	mux.HandleFunc("POST /page/{id}/comments", application.handleCreateComment)
+	mux.HandleFunc("PATCH /comment/{id}", application.handleUpdateComment)
+	mux.HandleFunc("DELETE /comment/{id}", application.handleDeleteComment)
+	mux.HandleFunc("POST /comment/{id}/reactions", application.handleToggleReaction)
+	mux.HandleFunc("POST /comment/{id}/resolve", application.handleResolveComment)
 
 	addr := ":7382"
 	log.Printf("peta started at http://localhost%s", addr)
@@ -142,7 +148,7 @@ CREATE TABLE IF NOT EXISTS folders (
 	db.Exec(`ALTER TABLE pages ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`)
 	// Seed sort_order from rowid so existing items keep their insertion order
 	db.Exec(`UPDATE pages SET sort_order = rowid WHERE sort_order = 0`)
-	return nil
+	return migrateComments(db)
 }
 
 func (a *app) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -507,10 +513,20 @@ func (a *app) reorderPages(ctx context.Context, ids []string) error {
 }
 
 func (a *app) deletePage(ctx context.Context, id string) error {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	_, err := a.db.ExecContext(ctx, `DELETE FROM pages WHERE id = ?`, id)
-	return err
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := a.deletePageComments(ctx, tx, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM pages WHERE id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (a *app) listFolders(ctx context.Context) ([]folderItem, error) {
