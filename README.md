@@ -319,7 +319,90 @@ sudo systemctl status peta
 journalctl -u peta -f
 ```
 
+### 5. 更新（2回目以降）
+
+```bash
+cd /path/to/peta
+go build -o peta .
+
+sudo mkdir -p /opt/peta/backups
+sudo systemctl stop peta
+sudo cp /opt/peta/data/peta.db /opt/peta/backups/peta-$(date +%Y%m%d-%H%M%S).db
+
+sudo cp peta /opt/peta/
+sudo cp -r web /opt/peta/
+sudo chown -R www-data:www-data /opt/peta
+
+sudo systemctl start peta
+```
+
+`web/` の配布を忘れないこと。バイナリだけ入れ替えると、追加された
+`share.js` や `content-agent.js` が404になり、共有ページのコメント機能が動かなくなります。
+
+起動後の確認:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:7382/web/content-agent.js
+journalctl -u peta -n 30
+```
+
+## マイグレーション
+
+スキーマは起動時に `migrate()` が毎回適用します。内容は
+`CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT EXISTS` と、
+失敗を無視する `ALTER TABLE ... ADD COLUMN` で構成されており、何度実行しても同じ結果になります。
+
+そのため、**デプロイ時に手動でDDLを流す作業はありません**。バイナリを差し替えて再起動すれば、
+不足しているテーブルや列が作られます。旧バージョンへ戻しても、増えたテーブルが使われなくなるだけで
+既存データは失われません。
+
+ただし、現在の方式は「テーブルや列を追加する」変更にしか対応できません。
+列の変更・削除やデータ移行が必要になった時点で、`user_version` を使った
+段階的なマイグレーションへ移行してください（現状 `user_version` は 0 のまま未使用です）。
+
+## バックアップと復旧
+
+DBは `journal_mode = delete` で動いているため、`-wal` / `-shm` は作られず、
+`data/peta.db` の1ファイルだけを対象にすれば足ります。
+
+### 停止中のバックアップ
+
+```bash
+sudo systemctl stop peta
+sudo cp /opt/peta/data/peta.db /opt/peta/backups/peta-$(date +%Y%m%d-%H%M%S).db
+sudo systemctl start peta
+```
+
+### 稼働中のバックアップ
+
+稼働中に `cp` すると、書き込み途中のファイルをコピーして壊れたバックアップができます。
+SQLiteの `.backup` を使ってください（`sqlite3` CLIが必要。アプリ本体は
+`modernc.org/sqlite` なのでCLIには依存していません）。
+
+```bash
+sqlite3 /opt/peta/data/peta.db ".backup '/opt/peta/backups/peta-$(date +%F).db'"
+sqlite3 /opt/peta/backups/peta-$(date +%F).db "pragma integrity_check"
+```
+
+### 定期バックアップ（cron例）
+
+毎日3時に取得し、14日より古いものを削除します。cron内では `%` のエスケープが必要です。
+
+```cron
+0 3 * * * sqlite3 /opt/peta/data/peta.db ".backup '/opt/peta/backups/peta-$(date +\%F).db'" && find /opt/peta/backups -name 'peta-*.db' -mtime +14 -delete
+```
+
+### 復旧
+
+```bash
+sudo systemctl stop peta
+sudo cp /opt/peta/backups/peta-20260101.db /opt/peta/data/peta.db
+sudo chown www-data:www-data /opt/peta/data/peta.db
+sudo systemctl start peta
+```
+
 ## 運用メモ
 
 - SQLite実DB（`data/peta.db`）は `.gitignore` で除外
 - `data/.gitkeep` はディレクトリ維持のためにコミット
+- `data/` ディレクトリはSQLiteがジャーナルファイルを作るため、実行ユーザーの書き込み権限が必要
