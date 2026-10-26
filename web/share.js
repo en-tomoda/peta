@@ -87,6 +87,8 @@
       method: method,
       headers: body ? { 'Content-Type': 'application/json' } : undefined,
       body: body ? JSON.stringify(body) : undefined
+    }).catch(function () {
+      throw new Error('サーバーに接続できません。少し待ってからもう一度送信してください');
     }).then(function (res) {
       if (!res.ok) return res.text().then(function (text) { throw new Error(text || res.status); });
       return res.status === 204 ? null : res.json();
@@ -104,8 +106,11 @@
       .catch(function () { toast('コメントを読み込めませんでした'); });
   }
 
-  function mutate(promise) {
-    return promise.then(applyThreads).catch(function (err) {
+  function mutate(promise, onSuccess) {
+    return promise.then(function (threads) {
+      if (onSuccess) onSuccess();
+      applyThreads(threads);
+    }).catch(function (err) {
       toast(String(err.message || err).trim() || '操作に失敗しました');
     });
   }
@@ -459,10 +464,13 @@
       return;
     }
 
-    var anchor = state.draft.anchor;
-    state.draft = null;
-    state.openPinID = null;
-    mutate(api('POST', '/page/' + pageID + '/comments', { author: name, body: body, anchor: anchor }));
+    mutate(
+      api('POST', '/page/' + pageID + '/comments', { author: name, body: body, anchor: state.draft.anchor }),
+      function () {
+        state.draft = null;
+        state.openPinID = null;
+      }
+    );
   }
 
   var ACTIONS = {
@@ -510,8 +518,7 @@
       var textarea = target.closest('.editor').querySelector('textarea');
       var body = textarea.value.trim();
       if (!body) { toast('本文が空です'); return; }
-      state.editing = null;
-      mutate(api('PATCH', '/comment/' + id, { body: body }));
+      mutate(api('PATCH', '/comment/' + id, { body: body }), function () { state.editing = null; });
     },
     'delete': function (id) {
       if (!window.confirm('このコメントを削除しますか？')) return;
@@ -561,9 +568,10 @@
     var body = input.value.trim();
     if (!body) return;
 
-    input.value = '';
-    mutate(api('POST', '/page/' + pageID + '/comments',
-      { parent_id: form.dataset.id, author: name, body: body }));
+    mutate(
+      api('POST', '/page/' + pageID + '/comments', { parent_id: form.dataset.id, author: name, body: body }),
+      function () { input.value = ''; }
+    );
   });
 
   document.addEventListener('keydown', function (event) {
