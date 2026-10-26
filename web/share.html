@@ -10,7 +10,7 @@
     <link rel="icon" type="image/svg+xml" href="/web/favicon.svg" />
     <link rel="stylesheet" href="/web/share.css" />
   </head>
-  <body>
+  <body data-page-id="{{.ID}}">
     <header class="preview-header" id="previewHeader">
       <div class="header-left">
         <a class="header-brand" href="/">Peta</a>
@@ -30,29 +30,59 @@
       </svg>
     </button>
 
-    <iframe
-      src="/content/{{.ID}}"
-      sandbox="allow-scripts allow-forms"
-      referrerpolicy="no-referrer"
-    ></iframe>
+    <div class="stage">
+      <div class="preview" id="preview">
+        <iframe
+          id="previewFrame"
+          src="/content/{{.ID}}"
+          sandbox="allow-scripts allow-forms"
+          referrerpolicy="no-referrer"
+        ></iframe>
 
-    <script>
-      const saved = localStorage.getItem("peta-theme") || "light";
-      document.documentElement.dataset.theme = saved;
+        <div class="pin-layer" id="pinLayer"></div>
 
-      const body         = document.body;
-      const headerTab    = document.getElementById('headerTab');
-      const headerToggle = document.getElementById('headerToggle');
-      const HIDDEN_KEY   = 'peta-header-hidden';
+        <div class="mode-hint" id="modeHint">コメントしたい位置をクリック（Esc で解除）</div>
 
-      function setHidden(hide, save) {
-        body.classList.toggle('header-hidden', hide);
-        if (save) localStorage.setItem(HIDDEN_KEY, hide ? '1' : '0');
-      }
+        <div class="comment-widget" id="commentWidget">
+          <button class="widget-btn" id="modeToggle" type="button" title="コメントモード">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M11.3 1.9a1.3 1.3 0 0 1 1.8 0l1 1a1.3 1.3 0 0 1 0 1.8l-7 7-3 .9.9-3 7-7.7z"
+                    stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+            </svg>
+          </button>
+          <button class="widget-btn" id="panelToggle" type="button" title="コメント一覧">
+            <svg width="15" height="15" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M2 3.2A1.2 1.2 0 0 1 3.2 2h9.6A1.2 1.2 0 0 1 14 3.2v6.4a1.2 1.2 0 0 1-1.2 1.2H6l-3.2 2.6a.4.4 0 0 1-.8-.3V3.2z"
+                    stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/>
+            </svg>
+            <span class="widget-badge" id="widgetBadge" hidden></span>
+          </button>
+        </div>
+      </div>
 
-      setHidden(localStorage.getItem(HIDDEN_KEY) === '1', false);
-      headerToggle.addEventListener('click', () => setHidden(true,  true));
-      headerTab   .addEventListener('click', () => setHidden(false, true));
-    </script>
+      <aside class="comment-panel" id="commentPanel" hidden>
+        <div class="panel-head">
+          <span class="panel-title">コメント</span>
+          <span class="panel-count" id="panelCount">0</span>
+          <button class="panel-close" id="panelClose" type="button" title="閉じる">
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="panel-filter">
+          <button type="button" class="filter-btn is-active" data-filter="all">すべて</button>
+          <button type="button" class="filter-btn" data-filter="open">未解決</button>
+          <button type="button" class="panel-me" id="panelMe"></button>
+        </div>
+
+        <div class="panel-body" id="panelBody"></div>
+      </aside>
+    </div>
+
+    <div class="toast" id="toast" hidden></div>
+
+    <script src="/web/share.js" defer></script>
   </body>
 </html>
