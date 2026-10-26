@@ -44,11 +44,13 @@ type uploadResponse struct {
 }
 
 type historyItem struct {
-	ID        string  `json:"id"`
-	Title     string  `json:"title,omitempty"`
-	FolderID  *string `json:"folder_id,omitempty"`
-	URL       string  `json:"url"`
-	CreatedAt string  `json:"created_at"`
+	ID           string  `json:"id"`
+	Title        string  `json:"title,omitempty"`
+	FolderID     *string `json:"folder_id,omitempty"`
+	URL          string  `json:"url"`
+	CreatedAt    string  `json:"created_at"`
+	CommentCount int     `json:"comment_count"`
+	OpenCount    int     `json:"open_count"`
 }
 
 type folderItem struct {
@@ -381,15 +383,20 @@ func (a *app) listHistory(ctx context.Context, limit int, folderFilter, sortKey 
 		query string
 		args  []any
 	)
+	const columns = `SELECT id, title, folder_id, created_at,
+       (SELECT COUNT(*) FROM comments c WHERE c.page_id = pages.id),
+       (SELECT COUNT(*) FROM comments c WHERE c.page_id = pages.id AND c.parent_id IS NULL AND c.resolved_at IS NULL)
+FROM pages`
+
 	switch folderFilter {
 	case "__none__":
-		query = `SELECT id, title, folder_id, created_at FROM pages WHERE folder_id IS NULL ORDER BY ` + order + ` LIMIT ?`
+		query = columns + ` WHERE folder_id IS NULL ORDER BY ` + order + ` LIMIT ?`
 		args = []any{limit}
 	case "":
-		query = `SELECT id, title, folder_id, created_at FROM pages ORDER BY ` + order + ` LIMIT ?`
+		query = columns + ` ORDER BY ` + order + ` LIMIT ?`
 		args = []any{limit}
 	default:
-		query = `SELECT id, title, folder_id, created_at FROM pages WHERE folder_id = ? ORDER BY ` + order + ` LIMIT ?`
+		query = columns + ` WHERE folder_id = ? ORDER BY ` + order + ` LIMIT ?`
 		args = []any{folderFilter, limit}
 	}
 
@@ -403,7 +410,8 @@ func (a *app) listHistory(ctx context.Context, limit int, folderFilter, sortKey 
 	for rows.Next() {
 		var item historyItem
 		var title, folderID sql.NullString
-		if err := rows.Scan(&item.ID, &title, &folderID, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &title, &folderID, &item.CreatedAt,
+			&item.CommentCount, &item.OpenCount); err != nil {
 			return nil, err
 		}
 		if title.Valid {
