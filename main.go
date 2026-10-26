@@ -25,6 +25,8 @@ const (
 	legacyDBPath = "data/petabin.db"
 	maxHTMLLen   = 2 * 1024 * 1024
 	maxHistory   = 50
+
+	contentAgentTag = "\n<script src=\"/web/content-agent.js\" defer></script>\n"
 )
 
 type app struct {
@@ -42,11 +44,13 @@ type uploadResponse struct {
 }
 
 type historyItem struct {
-	ID        string  `json:"id"`
-	Title     string  `json:"title,omitempty"`
-	FolderID  *string `json:"folder_id,omitempty"`
-	URL       string  `json:"url"`
-	CreatedAt string  `json:"created_at"`
+	ID           string  `json:"id"`
+	Title        string  `json:"title,omitempty"`
+	FolderID     *string `json:"folder_id,omitempty"`
+	URL          string  `json:"url"`
+	CreatedAt    string  `json:"created_at"`
+	CommentCount int     `json:"comment_count"`
+	OpenCount    int     `json:"open_count"`
 }
 
 type folderItem struct {
@@ -96,6 +100,13 @@ func main() {
 	mux.HandleFunc("DELETE /folder/{id}", application.handleDeleteFolder)
 	mux.HandleFunc("PATCH /page/{id}/folder", application.handleAssignFolder)
 	mux.HandleFunc("POST /history/reorder", application.handleReorder)
+	mux.HandleFunc("GET /page/{id}/comments", application.handleGetComments)
+	mux.HandleFunc("POST /page/{id}/comments", application.handleCreateComment)
+	mux.HandleFunc("PATCH /comment/{id}", application.handleUpdateComment)
+	mux.HandleFunc("PATCH /comment/{id}/anchor", application.handleUpdateAnchor)
+	mux.HandleFunc("DELETE /comment/{id}", application.handleDeleteComment)
+	mux.HandleFunc("POST /comment/{id}/reactions", application.handleToggleReaction)
+	mux.HandleFunc("POST /comment/{id}/resolve", application.handleResolveComment)
 
 	addr := ":7382"
 	log.Printf("peta started at http://localhost%s", addr)
@@ -142,7 +153,7 @@ CREATE TABLE IF NOT EXISTS folders (
 	db.Exec(`ALTER TABLE pages ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0`)
 	// Seed sort_order from rowid so existing items keep their insertion order
 	db.Exec(`UPDATE pages SET sort_order = rowid WHERE sort_order = 0`)
-	return nil
+	return migrateComments(db)
 }
 
 func (a *app) handleIndex(w http.ResponseWriter, r *http.Request) {
@@ -314,10 +325,22 @@ func (a *app) handleContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	if _, err := w.Write([]byte(html)); err != nil {
+	if _, err := w.Write([]byte(injectContentAgent(html))); err != nil {
 		http.Error(w, "failed to write html", http.StatusInternalServerError)
 		return
 	}
+}
+
+// injectContentAgent はコメントのピン座標を扱うスクリプトを配信時にだけ付け加える。
+// DBに保存されたHTMLは書き換えない。
+func injectContentAgent(html string) string {
+	lower := strings.ToLower(html)
+	for _, closing := range []string{"</body>", "</html>"} {
+		if i := strings.LastIndex(lower, closing); i >= 0 {
+			return html[:i] + contentAgentTag + html[i:]
+		}
+	}
+	return html + contentAgentTag
 }
 
 func (a *app) insertPage(ctx context.Context, id, title, html string) error {
@@ -360,15 +383,20 @@ func (a *app) listHistory(ctx context.Context, limit int, folderFilter, sortKey 
 		query string
 		args  []any
 	)
+	const columns = `SELECT id, title, folder_id, created_at,
+       (SELECT COUNT(*) FROM comments c WHERE c.page_id = pages.id),
+       (SELECT COUNT(*) FROM comments c WHERE c.page_id = pages.id AND c.parent_id IS NULL AND c.resolved_at IS NULL)
+FROM pages`
+
 	switch folderFilter {
 	case "__none__":
-		query = `SELECT id, title, folder_id, created_at FROM pages WHERE folder_id IS NULL ORDER BY ` + order + ` LIMIT ?`
+		query = columns + ` WHERE folder_id IS NULL ORDER BY ` + order + ` LIMIT ?`
 		args = []any{limit}
 	case "":
-		query = `SELECT id, title, folder_id, created_at FROM pages ORDER BY ` + order + ` LIMIT ?`
+		query = columns + ` ORDER BY ` + order + ` LIMIT ?`
 		args = []any{limit}
 	default:
-		query = `SELECT id, title, folder_id, created_at FROM pages WHERE folder_id = ? ORDER BY ` + order + ` LIMIT ?`
+		query = columns + ` WHERE folder_id = ? ORDER BY ` + order + ` LIMIT ?`
 		args = []any{folderFilter, limit}
 	}
 
@@ -382,7 +410,8 @@ func (a *app) listHistory(ctx context.Context, limit int, folderFilter, sortKey 
 	for rows.Next() {
 		var item historyItem
 		var title, folderID sql.NullString
-		if err := rows.Scan(&item.ID, &title, &folderID, &item.CreatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &title, &folderID, &item.CreatedAt,
+			&item.CommentCount, &item.OpenCount); err != nil {
 			return nil, err
 		}
 		if title.Valid {
@@ -507,10 +536,20 @@ func (a *app) reorderPages(ctx context.Context, ids []string) error {
 }
 
 func (a *app) deletePage(ctx context.Context, id string) error {
-	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	_, err := a.db.ExecContext(ctx, `DELETE FROM pages WHERE id = ?`, id)
-	return err
+	tx, err := a.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if err := a.deletePageComments(ctx, tx, id); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM pages WHERE id = ?`, id); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (a *app) listFolders(ctx context.Context) ([]folderItem, error) {
