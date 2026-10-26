@@ -27,6 +27,8 @@
   };
 
   var pinNodes = {};
+  var drag = null;
+  var suppressClick = false;
 
   /* ===== テーマ / ヘッダー ===== */
 
@@ -156,6 +158,9 @@
         break;
       case 'peta:pick':
         openDraft(data.anchor);
+        break;
+      case 'peta:point-anchor':
+        movePin(data.id, data.anchor);
         break;
       case 'peta:cancel':
         dismiss();
@@ -396,6 +401,8 @@
     var height = frame.clientHeight;
 
     Object.keys(pinNodes).forEach(function (id) {
+      if (drag && drag.moved && drag.id === id) return;
+
       var node = pinNodes[id];
       var position = state.positions[id];
       if (!position) {
@@ -523,6 +530,12 @@
   };
 
   document.addEventListener('click', function (event) {
+    if (suppressClick) {
+      suppressClick = false;
+      event.preventDefault();
+      return;
+    }
+
     var trigger = event.target.closest('[data-act]');
     if (trigger && ACTIONS[trigger.dataset.act]) {
       event.preventDefault();
@@ -598,7 +611,90 @@
     renderPins();
   });
 
+  /* ===== ピンのドラッグ移動 ===== */
+
+  function movePin(id, anchor) {
+    if (id === DRAFT_ID) {
+      if (!state.draft) return;
+      state.draft.anchor = anchor;
+      syncAnchors();
+      return;
+    }
+    mutate(api('PATCH', '/comment/' + id + '/anchor', { anchor: anchor }));
+  }
+
+  pinLayer.addEventListener('pointerdown', function (event) {
+    if (event.button !== 0) return;
+
+    var dot = event.target.closest('.pin-dot');
+    if (!dot) return;
+
+    var pin = dot.closest('.pin');
+    var position = state.positions[pin.dataset.id];
+    if (!position || !position.visible) return;
+
+    event.preventDefault();
+    drag = {
+      id: pin.dataset.id, node: pin, dot: dot, pointerId: event.pointerId, moved: false,
+      startX: event.clientX, startY: event.clientY,
+      baseX: position.x, baseY: position.y
+    };
+
+    // カーソルがバッジを外れると iframe にマウスを奪われるので、押した時点で捕まえておく
+    pinLayer.classList.add('is-capturing');
+    if (dot.setPointerCapture) {
+      try { dot.setPointerCapture(event.pointerId); } catch (e) { /* 未対応環境は層で受ける */ }
+    }
+  });
+
+  document.addEventListener('pointermove', function (event) {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+
+    var dx = event.clientX - drag.startX;
+    var dy = event.clientY - drag.startY;
+    if (!drag.moved) {
+      if (Math.abs(dx) + Math.abs(dy) < 4) return;
+      drag.moved = true;
+      drag.node.classList.add('is-dragging');
+    }
+    drag.node.style.transform = 'translate(' + (drag.baseX + dx) + 'px,' + (drag.baseY + dy) + 'px)';
+  });
+
+  function endDrag(event) {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+
+    var dropped = drag;
+    drag = null;
+    pinLayer.classList.remove('is-capturing');
+    dropped.node.classList.remove('is-dragging');
+    if (dropped.dot.releasePointerCapture) {
+      try { dropped.dot.releasePointerCapture(dropped.pointerId); } catch (e) { /* 解放済み */ }
+    }
+    if (!dropped.moved) return;
+
+    // ドラッグ直後のクリックでふきだしが開かないようにする
+    suppressClick = true;
+
+    var rect = frame.getBoundingClientRect();
+    var x = event.clientX - rect.left;
+    var y = event.clientY - rect.top;
+    if (x < 0 || y < 0 || x > rect.width || y > rect.height) {
+      applyPositions();
+      toast('プレビューの外には置けません');
+      return;
+    }
+    toFrame({ type: 'peta:resolve-point', id: dropped.id, x: x, y: y });
+  }
+
+  document.addEventListener('pointerup', endDrag);
+  document.addEventListener('pointercancel', endDrag);
+
   window.addEventListener('resize', applyPositions);
+
+  // 戻る/進むでページが復帰したときは、表示中のコメントを取り直す
+  window.addEventListener('pageshow', function (event) {
+    if (event.persisted) loadThreads();
+  });
 
   /* ===== 初期化 ===== */
 

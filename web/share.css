@@ -380,3 +380,10 @@ body.comment-mode .pin { pointer-events: none; }
   border-style: solid; border-color: var(--accent);
   outline: none; background: var(--surface);
 }
+
+/* ===== PIN DRAG ===== */
+.pin-layer.is-capturing { pointer-events: auto; }
+.pin-layer.is-capturing .pin-dot { cursor: grabbing; }
+.pin.is-dragging { z-index: 4; }
+.pin.is-dragging .pin-pop { display: none; }
+.pin.is-dragging .pin-dot { cursor: grabbing; transform: scale(1.15); box-shadow: 0 4px 14px var(--shadow); }

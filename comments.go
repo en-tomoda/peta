@@ -59,6 +59,10 @@ type updateCommentRequest struct {
 	Body string `json:"body"`
 }
 
+type updateAnchorRequest struct {
+	Anchor commentAnchor `json:"anchor"`
+}
+
 type reactionRequest struct {
 	Emoji  string `json:"emoji"`
 	Author string `json:"author"`
@@ -198,6 +202,36 @@ func (a *app) handleUpdateComment(w http.ResponseWriter, r *http.Request) {
 	a.respondComments(w, r, pageID)
 }
 
+func (a *app) handleUpdateAnchor(w http.ResponseWriter, r *http.Request) {
+	id := strings.TrimSpace(r.PathValue("id"))
+	if id == "" {
+		http.NotFound(w, r)
+		return
+	}
+
+	var req updateAnchorRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	pageID, err := a.commentPageID(r.Context(), id)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "failed to load comment", http.StatusInternalServerError)
+		return
+	}
+
+	if err := a.updateAnchor(r.Context(), id, req.Anchor); err != nil {
+		http.Error(w, "failed to move comment", http.StatusInternalServerError)
+		return
+	}
+	a.respondComments(w, r, pageID)
+}
+
 func (a *app) handleDeleteComment(w http.ResponseWriter, r *http.Request) {
 	id := strings.TrimSpace(r.PathValue("id"))
 	if id == "" {
@@ -298,6 +332,7 @@ func (a *app) respondComments(w http.ResponseWriter, r *http.Request, pageID str
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "no-store")
 	if err := json.NewEncoder(w).Encode(items); err != nil {
 		http.Error(w, "failed to encode response", http.StatusInternalServerError)
 		return
@@ -418,6 +453,23 @@ func (a *app) updateComment(ctx context.Context, id, body string) error {
 	_, err := a.db.ExecContext(ctx, `
 UPDATE comments SET body = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
 `, body, id)
+	return err
+}
+
+// ピンの移動は本文の変更ではないので updated_at は触らない
+func (a *app) updateAnchor(ctx context.Context, id string, anchor commentAnchor) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	var selector sql.NullString
+	if anchor.Selector != "" {
+		selector = sql.NullString{String: anchor.Selector, Valid: true}
+	}
+	_, err := a.db.ExecContext(ctx, `
+UPDATE comments
+SET anchor_selector = ?, anchor_rx = ?, anchor_ry = ?, anchor_px = ?, anchor_py = ?
+WHERE id = ? AND parent_id IS NULL
+`, selector, anchor.RX, anchor.RY, anchor.PX, anchor.PY, id)
 	return err
 }
 

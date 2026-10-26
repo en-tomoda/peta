@@ -89,23 +89,44 @@
     }
   }
 
+  // ページ内タブの切り替えなどで隠れた要素は、座標を返さずピンごと隠す
+  function isDisplayed(el) {
+    if (!el.getClientRects().length) return false;
+    var style = window.getComputedStyle(el);
+    return style.visibility !== 'hidden' && style.display !== 'none';
+  }
+
   function resolveAnchor(anchor) {
     var el = findElement(anchor.selector);
     if (el) {
+      if (!isDisplayed(el)) return { x: 0, y: 0, resolved: true, hidden: true };
+
       var rect = el.getBoundingClientRect();
-      if (rect.width || rect.height) {
-        return {
-          x: rect.left + rect.width * clamp01(anchor.rx),
-          y: rect.top + rect.height * clamp01(anchor.ry),
-          resolved: true
-        };
-      }
+      return {
+        x: rect.left + rect.width * clamp01(anchor.rx),
+        y: rect.top + rect.height * clamp01(anchor.ry),
+        resolved: true,
+        hidden: false
+      };
     }
-    // アンカー要素が見つからないときはドキュメント絶対座標にフォールバック
+    // アンカー要素そのものが無いときだけドキュメント絶対座標にフォールバック
     return {
       x: (anchor.px || 0) - window.pageXOffset,
       y: (anchor.py || 0) - window.pageYOffset,
-      resolved: false
+      resolved: false,
+      hidden: false
+    };
+  }
+
+  function anchorFrom(el, clientX, clientY) {
+    if (!el || el.nodeType !== 1) el = document.body || document.documentElement;
+    var rect = el.getBoundingClientRect();
+    return {
+      selector: buildSelector(el),
+      rx: rect.width ? clamp01((clientX - rect.left) / rect.width) : 0.5,
+      ry: rect.height ? clamp01((clientY - rect.top) / rect.height) : 0.5,
+      px: round(clientX + window.pageXOffset),
+      py: round(clientY + window.pageYOffset)
     };
   }
 
@@ -125,7 +146,9 @@
         x: round(point.x),
         y: round(point.y),
         resolved: point.resolved,
-        visible: point.x >= 0 && point.y >= 0 &&
+        hidden: !!point.hidden,
+        visible: !point.hidden &&
+          point.x >= 0 && point.y >= 0 &&
           point.x <= window.innerWidth && point.y <= window.innerHeight
       });
     }
@@ -186,18 +209,9 @@
     swallow(event);
 
     var el = document.elementFromPoint(event.clientX, event.clientY) || event.target;
-    if (!el || el.nodeType !== 1) el = document.body || document.documentElement;
-
-    var rect = el.getBoundingClientRect();
     post({
       type: 'peta:pick',
-      anchor: {
-        selector: buildSelector(el),
-        rx: rect.width ? clamp01((event.clientX - rect.left) / rect.width) : 0.5,
-        ry: rect.height ? clamp01((event.clientY - rect.top) / rect.height) : 0.5,
-        px: round(event.clientX + window.pageXOffset),
-        py: round(event.clientY + window.pageYOffset)
-      },
+      anchor: anchorFrom(el, event.clientX, event.clientY),
       point: { x: round(event.clientX), y: round(event.clientY) }
     });
   }
@@ -276,6 +290,13 @@
         break;
       case 'peta:scroll-to':
         scrollToAnchor(data.id);
+        break;
+      case 'peta:resolve-point':
+        post({
+          type: 'peta:point-anchor',
+          id: data.id,
+          anchor: anchorFrom(document.elementFromPoint(data.x, data.y), data.x, data.y)
+        });
         break;
     }
   });

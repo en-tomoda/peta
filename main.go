@@ -101,6 +101,7 @@ func main() {
 	mux.HandleFunc("GET /page/{id}/comments", application.handleGetComments)
 	mux.HandleFunc("POST /page/{id}/comments", application.handleCreateComment)
 	mux.HandleFunc("PATCH /comment/{id}", application.handleUpdateComment)
+	mux.HandleFunc("PATCH /comment/{id}/anchor", application.handleUpdateAnchor)
 	mux.HandleFunc("DELETE /comment/{id}", application.handleDeleteComment)
 	mux.HandleFunc("POST /comment/{id}/reactions", application.handleToggleReaction)
 	mux.HandleFunc("POST /comment/{id}/resolve", application.handleResolveComment)
