@@ -1,6 +1,6 @@
 # Peta
 
-![Version](https://img.shields.io/badge/version-v0.2.0-blue)
+![Version](https://img.shields.io/badge/version-v0.3.0-blue)
 ![Go](https://img.shields.io/badge/Go-1.22-00ADD8?logo=go)
 ![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite)
 
